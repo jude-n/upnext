@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
-  DndContext, closestCenter, KeyboardSensor, PointerSensor,
-  useSensor, useSensors, DragOverlay
+  DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core'
 import {
   arrayMove, SortableContext, sortableKeyboardCoordinates,
@@ -10,15 +9,52 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { supabase } from './supabase'
 import {
-  Plus, Check, Grip, Tag, Folder, Calendar, ChevronDown,
-  ChevronRight, X, Edit2, Trash2, Filter, Sun, LayoutList,
-  Clock, AlertCircle, Circle, CheckCircle2, Star
+  Plus, Grip, Tag, Calendar, ChevronDown, ChevronRight,
+  X, Edit2, Trash2, Sun, LayoutList, Clock, Circle,
+  CheckCircle2, LogOut, AlertTriangle
 } from 'lucide-react'
-import {
-  format, isToday, isTomorrow, isThisWeek, isThisMonth,
-  startOfDay, parseISO, isPast, addDays
-} from 'date-fns'
+import { format, isToday, isTomorrow, isThisWeek, isThisMonth, parseISO, isPast, addDays } from 'date-fns'
 import './App.css'
+
+// ─── Constants & validation ───────────────────────────────────────────────────
+const LIMITS = {
+  title:    500,
+  notes:    5000,
+  tag:      50,
+  tagCount: 20,
+  projName: 100,
+  catName:  50,
+}
+
+const VALID_PRIORITIES = ['low', 'medium', 'high']
+const HEX_RE = /^#[0-9a-fA-F]{6}$/
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+// Strip any HTML/script from plain text fields — defense in depth
+const sanitizeText = (str) =>
+  typeof str === 'string'
+    ? str.replace(/<[^>]*>/g, '').trim()
+    : ''
+
+const sanitizeTags = (tags) =>
+  (Array.isArray(tags) ? tags : [])
+    .map(t => sanitizeText(t).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, LIMITS.tag))
+    .filter(Boolean)
+    .slice(0, LIMITS.tagCount)
+
+const safeUUID = (val) => (UUID_RE.test(val) ? val : null)
+const safeColor = (val) => (HEX_RE.test(val) ? val : '#6366f1')
+const safePriority = (val) => (VALID_PRIORITIES.includes(val) ? val : 'medium')
+
+const validateTodoForm = (form) => {
+  const errors = []
+  const title = sanitizeText(form.title)
+  if (!title) errors.push('Title is required.')
+  if (title.length > LIMITS.title) errors.push(`Title must be under ${LIMITS.title} characters.`)
+  const notes = sanitizeText(form.notes)
+  if (notes.length > LIMITS.notes) errors.push(`Notes must be under ${LIMITS.notes} characters.`)
+  return { errors, title, notes }
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const PRIORITY_CONFIG = {
@@ -29,12 +65,91 @@ const PRIORITY_CONFIG = {
 
 const dueDateLabel = (dateStr) => {
   if (!dateStr) return null
-  const d = parseISO(dateStr)
-  if (isToday(d)) return { label: 'Today', urgent: true }
-  if (isTomorrow(d)) return { label: 'Tomorrow', urgent: false }
-  if (isPast(d)) return { label: format(d, 'MMM d'), urgent: true, overdue: true }
-  if (isThisWeek(d)) return { label: format(d, 'EEE'), urgent: false }
-  return { label: format(d, 'MMM d'), urgent: false }
+  try {
+    const d = parseISO(dateStr)
+    if (isToday(d))    return { label: 'Today',             urgent: true }
+    if (isTomorrow(d)) return { label: 'Tomorrow',          urgent: false }
+    if (isPast(d))     return { label: format(d, 'MMM d'),  urgent: true, overdue: true }
+    if (isThisWeek(d)) return { label: format(d, 'EEE'),    urgent: false }
+    return { label: format(d, 'MMM d'), urgent: false }
+  } catch { return null }
+}
+
+// ─── Error Banner ──────────────────────────────────────────────────────────────
+function ErrorBanner({ message, onDismiss }) {
+  if (!message) return null
+  return (
+    <div className="error-banner">
+      <AlertTriangle size={14} />
+      <span>{message}</span>
+      <button className="icon-btn" onClick={onDismiss}><X size={13} /></button>
+    </div>
+  )
+}
+
+// ─── Login Screen ─────────────────────────────────────────────────────────────
+function LoginScreen() {
+  const [email, setEmail] = useState('')
+  const [sent, setSent] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleLogin = async () => {
+    const clean = email.trim().toLowerCase()
+    // Basic email shape check — Supabase validates properly server-side
+    if (!clean || !clean.includes('@') || !clean.includes('.')) {
+      setError('Please enter a valid email address.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    const { error: err } = await supabase.auth.signInWithOtp({
+      email: clean,
+      options: { emailRedirectTo: window.location.origin }
+    })
+    setLoading(false)
+    if (err) { setError(err.message); return }
+    setSent(true)
+  }
+
+  if (sent) return (
+    <div className="setup-screen">
+      <div className="setup-card">
+        <div className="setup-logo">upnext</div>
+        <p className="setup-sub">Check your email for a magic link to sign in.</p>
+        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
+          Sent to <strong style={{ color: 'var(--text2)' }}>{email}</strong>
+        </p>
+        <button className="btn-ghost" style={{ marginTop: 20, width: '100%' }} onClick={() => setSent(false)}>
+          ← Use a different email
+        </button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="setup-screen">
+      <div className="setup-card">
+        <div className="setup-logo">upnext</div>
+        <p className="setup-sub">Sign in with a magic link — no password needed.</p>
+        {error && <div className="form-error">{error}</div>}
+        <div className="setup-fields">
+          <input
+            type="email"
+            placeholder="your@email.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()}
+            autoComplete="email"
+            maxLength={254}
+          />
+        </div>
+        <button className="btn-primary full" onClick={handleLogin} disabled={loading || !email}>
+          {loading ? 'Sending…' : 'Send Magic Link →'}
+        </button>
+      </div>
+    </div>
+  )
 }
 
 // ─── Sortable Todo Item ────────────────────────────────────────────────────────
@@ -55,22 +170,19 @@ function SortableTodoItem({ todo, projects, categories, onToggle, onDelete, onEd
 
 // ─── Todo Item ─────────────────────────────────────────────────────────────────
 function TodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, dragHandleProps }) {
-  const project = projects.find(p => p.id === todo.project_id)
+  const project  = projects.find(p => p.id === todo.project_id)
   const category = categories.find(c => c.id === todo.category_id)
-  const dueInfo = dueDateLabel(todo.due_date)
-  const prio = PRIORITY_CONFIG[todo.priority] || PRIORITY_CONFIG.medium
+  const dueInfo  = dueDateLabel(todo.due_date)
+  const prio     = PRIORITY_CONFIG[todo.priority] || PRIORITY_CONFIG.medium
 
   return (
     <div className={`todo-item ${todo.completed ? 'completed' : ''} priority-${todo.priority}`}>
-      <div className="todo-drag-handle" {...dragHandleProps}>
-        <Grip size={14} />
-      </div>
+      <div className="todo-drag-handle" {...dragHandleProps}><Grip size={14} /></div>
 
       <button className="todo-check" onClick={() => onToggle(todo)}>
         {todo.completed
           ? <CheckCircle2 size={18} className="check-done" />
-          : <Circle size={18} className="check-empty" />
-        }
+          : <Circle size={18} className="check-empty" />}
       </button>
 
       <div className="todo-body" onClick={() => onEdit(todo)}>
@@ -79,7 +191,6 @@ function TodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, drag
           <span className="todo-title">{todo.title}</span>
           {todo.notes && <span className="todo-has-notes" title={todo.notes}>…</span>}
         </div>
-
         <div className="todo-meta">
           {project && (
             <span className="todo-badge project-badge" style={{ '--badge-color': project.color }}>
@@ -113,25 +224,32 @@ function TodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, drag
 // ─── Todo Modal ────────────────────────────────────────────────────────────────
 function TodoModal({ todo, projects, categories, onSave, onClose }) {
   const [form, setForm] = useState({
-    title: todo?.title || '',
-    notes: todo?.notes || '',
-    due_date: todo?.due_date || '',
-    project_id: todo?.project_id || '',
+    title:       todo?.title || '',
+    notes:       todo?.notes || '',
+    due_date:    todo?.due_date || '',
+    project_id:  todo?.project_id || '',
     category_id: todo?.category_id || '',
-    priority: todo?.priority || 'medium',
-    tags: (todo?.tags || []).join(', '),
+    priority:    todo?.priority || 'medium',
+    tags:        (todo?.tags || []).join(', '),
   })
+  const [errors, setErrors] = useState([])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleSave = () => {
-    if (!form.title.trim()) return
+    const { errors: errs, title, notes } = validateTodoForm(form)
+    if (errs.length) { setErrors(errs); return }
+
+    const rawTags = form.tags.split(',').map(t => t.trim()).filter(Boolean)
+
     onSave({
-      ...form,
-      tags: form.tags.split(',').map(t => t.trim()).filter(Boolean),
-      project_id: form.project_id || null,
-      category_id: form.category_id || null,
-      due_date: form.due_date || null,
+      title,
+      notes:       notes || null,
+      due_date:    form.due_date || null,
+      project_id:  safeUUID(form.project_id) || null,
+      category_id: safeUUID(form.category_id) || null,
+      priority:    safePriority(form.priority),
+      tags:        sanitizeTags(rawTags),
     })
   }
 
@@ -144,20 +262,26 @@ function TodoModal({ todo, projects, categories, onSave, onClose }) {
         </div>
 
         <div className="modal-body">
+          {errors.length > 0 && (
+            <div className="form-error">{errors.join(' ')}</div>
+          )}
           <input
             className="modal-title-input"
             placeholder="What needs to be done?"
             value={form.title}
             onChange={e => set('title', e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSave()}
+            maxLength={LIMITS.title}
             autoFocus
           />
+          <div className="char-count">{form.title.length}/{LIMITS.title}</div>
 
           <textarea
             className="modal-notes"
             placeholder="Notes (optional)"
             value={form.notes}
             onChange={e => set('notes', e.target.value)}
+            maxLength={LIMITS.notes}
             rows={2}
           />
 
@@ -194,11 +318,12 @@ function TodoModal({ todo, projects, categories, onSave, onClose }) {
           </div>
 
           <div className="modal-field">
-            <label>Tags (comma separated)</label>
+            <label>Tags (comma separated — letters, numbers, hyphens only)</label>
             <input
               placeholder="e.g. urgent, review, design"
               value={form.tags}
               onChange={e => set('tags', e.target.value)}
+              maxLength={LIMITS.tag * LIMITS.tagCount}
             />
           </div>
         </div>
@@ -215,13 +340,12 @@ function TodoModal({ todo, projects, categories, onSave, onClose }) {
 }
 
 // ─── Group Section ─────────────────────────────────────────────────────────────
-function TodoGroup({ title, todos, projects, categories, onToggle, onDelete, onEdit, onDragEnd, badge, accent }) {
+function TodoGroup({ title, todos, projects, categories, onToggle, onDelete, onEdit, onDragEnd, accent }) {
   const [collapsed, setCollapsed] = useState(false)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
-
   if (todos.length === 0) return null
 
   const handleDragEnd = (event) => {
@@ -241,9 +365,7 @@ function TodoGroup({ title, todos, projects, categories, onToggle, onDelete, onE
           <span className="group-title">{title}</span>
           <span className="group-count">{todos.filter(t => !t.completed).length}</span>
         </div>
-        {badge && <span className="group-badge">{badge}</span>}
       </div>
-
       {!collapsed && (
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={todos.map(t => t.id)} strategy={verticalListSortingStrategy}>
@@ -263,114 +385,77 @@ function TodoGroup({ title, todos, projects, categories, onToggle, onDelete, onE
   )
 }
 
-// ─── Quick Add Bar ─────────────────────────────────────────────────────────────
+// ─── Quick Add ─────────────────────────────────────────────────────────────────
 function QuickAdd({ onAdd }) {
   const [val, setVal] = useState('')
   const submit = () => {
-    if (!val.trim()) return
-    onAdd(val.trim())
+    const clean = sanitizeText(val)
+    if (!clean || clean.length > LIMITS.title) return
+    onAdd(clean)
     setVal('')
   }
   return (
     <div className="quick-add">
       <Plus size={16} className="quick-add-icon" />
       <input
-        placeholder="Add a task... (press Enter)"
+        placeholder="Add a task… (press Enter)"
         value={val}
         onChange={e => setVal(e.target.value)}
         onKeyDown={e => e.key === 'Enter' && submit()}
+        maxLength={LIMITS.title}
       />
       {val && <button className="btn-primary small" onClick={submit}>Add</button>}
     </div>
   )
 }
 
-// ─── Setup Screen ──────────────────────────────────────────────────────────────
-function SetupScreen({ onConnect }) {
-  const [url, setUrl] = useState('')
-  const [key, setKey] = useState('')
-  return (
-    <div className="setup-screen">
-      <div className="setup-card">
-        <div className="setup-logo">upnext</div>
-        <p className="setup-sub">Connect your Supabase project to sync across all your devices.</p>
-
-        <div className="setup-steps">
-          <div className="setup-step">
-            <span className="step-num">1</span>
-            <span>Go to <a href="https://supabase.com" target="_blank" rel="noreferrer">supabase.com</a> → create a free project</span>
-          </div>
-          <div className="setup-step">
-            <span className="step-num">2</span>
-            <span>Open <strong>SQL Editor</strong> → paste & run <code>SUPABASE_SCHEMA.sql</code></span>
-          </div>
-          <div className="setup-step">
-            <span className="step-num">3</span>
-            <span>Go to <strong>Settings → API</strong> → copy your URL and anon key below</span>
-          </div>
-        </div>
-
-        <div className="setup-fields">
-          <input placeholder="Project URL (https://xxx.supabase.co)" value={url} onChange={e => setUrl(e.target.value)} />
-          <input placeholder="Anon Public Key" value={key} onChange={e => setKey(e.target.value)} type="password" />
-        </div>
-
-        <button className="btn-primary full" onClick={() => onConnect(url, key)} disabled={!url || !key}>
-          Connect & Launch →
-        </button>
-      </div>
-    </div>
-  )
-}
-
 // ─── Main App ──────────────────────────────────────────────────────────────────
 export default function App() {
-  const [connected, setConnected] = useState(false)
-  const [todos, setTodos] = useState([])
-  const [projects, setProjects] = useState([])
+  const [session,    setSession]    = useState(null)
+  const [authReady,  setAuthReady]  = useState(false)
+  const [todos,      setTodos]      = useState([])
+  const [projects,   setProjects]   = useState([])
   const [categories, setCategories] = useState([])
-  const [view, setView] = useState('today') // today | all | week | month | project-{id}
-  const [modal, setModal] = useState(null)   // null | 'new' | todo object
-  const [filter, setFilter] = useState({ category: '', priority: '', tag: '' })
-  const [loading, setLoading] = useState(true)
+  const [view,       setView]       = useState('today')
+  const [modal,      setModal]      = useState(null)
+  const [filter,     setFilter]     = useState({ category: '', priority: '', tag: '' })
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState('')
 
-  // ── Check if we have stored credentials
+  // ── Auth state ───────────────────────────
   useEffect(() => {
-    const url = localStorage.getItem('upnext_url')
-    const key = localStorage.getItem('upnext_key')
-    if (url && key && url !== 'YOUR_SUPABASE_URL') {
-      setConnected(true)
-    } else if (process.env.REACT_APP_SUPABASE_URL && process.env.REACT_APP_SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
-      setConnected(true)
-    } else {
-      setLoading(false)
-    }
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setAuthReady(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
+      setSession(s)
+      if (!s) { setTodos([]); setProjects([]); setCategories([]) }
+    })
+    return () => subscription.unsubscribe()
   }, [])
 
-  const handleConnect = (url, key) => {
-    localStorage.setItem('upnext_url', url)
-    localStorage.setItem('upnext_key', key)
-    window.location.reload()
-  }
-
-  // ── Load data
+  // ── Load data (only when authed) ──────────
   useEffect(() => {
-    if (!connected) return
+    if (!session) return
+    setLoading(true)
     Promise.all([
-      supabase.from('todos').select('*').order('sort_order').order('created_at'),
-      supabase.from('projects').select('*').order('created_at'),
-      supabase.from('categories').select('*').order('name'),
+      supabase.from('todos').select('id,title,notes,completed,due_date,project_id,category_id,tags,priority,sort_order,created_at')
+        .order('sort_order').order('created_at'),
+      supabase.from('projects').select('id,name,color,icon').order('created_at'),
+      supabase.from('categories').select('id,name,color').order('name'),
     ]).then(([t, p, c]) => {
-      if (t.data) setTodos(t.data)
-      if (p.data) setProjects(p.data)
-      if (c.data) setCategories(c.data)
+      if (t.error) { setError('Failed to load tasks.'); return }
+      setTodos(t.data || [])
+      setProjects(p.data || [])
+      setCategories(c.data || [])
       setLoading(false)
     })
-  }, [connected])
+  }, [session])
 
-  // ── Realtime subscription
+  // ── Realtime (scoped to authed user via RLS) ──
   useEffect(() => {
-    if (!connected) return
+    if (!session) return
     const channel = supabase.channel('todos-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, payload => {
         if (payload.eventType === 'INSERT') setTodos(t => [...t, payload.new])
@@ -379,36 +464,57 @@ export default function App() {
       })
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [connected])
+  }, [session])
 
-  // ── CRUD
+  // ── Sign out ──────────────────────────────
+  const signOut = async () => {
+    await supabase.auth.signOut()
+    setSession(null)
+  }
+
+  // ── CRUD — always stamps user_id ──────────
+  const userId = session?.user?.id
+
   const addTodo = async (titleOrObj) => {
-    const newTodo = typeof titleOrObj === 'string'
-      ? { title: titleOrObj, priority: 'medium', tags: [], sort_order: todos.length }
-      : { ...titleOrObj, sort_order: todos.length }
-
-    if (view.startsWith('project-')) newTodo.project_id = view.replace('project-', '')
-    if (view === 'today') newTodo.due_date = format(new Date(), 'yyyy-MM-dd')
-
-    const { data } = await supabase.from('todos').insert(newTodo).select().single()
+    if (!userId) return
+    const base = typeof titleOrObj === 'string'
+      ? { title: titleOrObj, priority: 'medium', tags: [] }
+      : titleOrObj
+    const newTodo = {
+      ...base,
+      user_id:    userId,
+      sort_order: todos.length,
+      ...(view.startsWith('project-') ? { project_id: safeUUID(view.replace('project-', '')) } : {}),
+      ...(view === 'today' ? { due_date: format(new Date(), 'yyyy-MM-dd') } : {}),
+    }
+    const { data, error: err } = await supabase.from('todos').insert(newTodo).select().single()
+    if (err) { setError('Failed to add task.'); return }
     if (data) setTodos(t => [...t, data])
     setModal(null)
   }
 
   const updateTodo = async (updated) => {
-    const { data } = await supabase.from('todos').update(updated).eq('id', updated.id).select().single()
+    if (!userId) return
+    // Never allow client to change user_id
+    const { user_id: _strip, ...safe } = updated
+    const { data, error: err } = await supabase
+      .from('todos').update(safe).eq('id', safe.id).select().single()
+    if (err) { setError('Failed to update task.'); return }
     if (data) setTodos(t => t.map(x => x.id === data.id ? data : x))
     setModal(null)
   }
 
   const toggleTodo = async (todo) => {
-    const updated = { ...todo, completed: !todo.completed }
-    await supabase.from('todos').update({ completed: updated.completed }).eq('id', todo.id)
-    setTodos(t => t.map(x => x.id === todo.id ? updated : x))
+    const { error: err } = await supabase
+      .from('todos').update({ completed: !todo.completed }).eq('id', todo.id)
+    if (err) { setError('Failed to update task.'); return }
+    setTodos(t => t.map(x => x.id === todo.id ? { ...x, completed: !x.completed } : x))
   }
 
   const deleteTodo = async (id) => {
-    await supabase.from('todos').delete().eq('id', id)
+    if (!safeUUID(id)) return
+    const { error: err } = await supabase.from('todos').delete().eq('id', id)
+    if (err) { setError('Failed to delete task.'); return }
     setTodos(t => t.filter(x => x.id !== id))
   }
 
@@ -419,15 +525,15 @@ export default function App() {
 
   const handleDragEnd = async (group, reordered) => {
     setTodos(prev => {
-      const ids = group.map(t => t.id)
-      const next = prev.filter(t => !ids.includes(t.id))
-      return [...next, ...reordered]
+      const ids = new Set(group.map(t => t.id))
+      return [...prev.filter(t => !ids.has(t.id)), ...reordered]
     })
-    const updates = reordered.map((t, i) => supabase.from('todos').update({ sort_order: i }).eq('id', t.id))
-    await Promise.all(updates)
+    await Promise.all(
+      reordered.map((t, i) => supabase.from('todos').update({ sort_order: i }).eq('id', t.id))
+    )
   }
 
-  // ── Filter & view logic
+  // ── Filter & view ─────────────────────────
   const filteredTodos = todos.filter(t => {
     if (filter.category && t.category_id !== filter.category) return false
     if (filter.priority && t.priority !== filter.priority) return false
@@ -437,72 +543,55 @@ export default function App() {
 
   const getViewTodos = () => {
     const active = filteredTodos.filter(t => !t.completed)
-    const done = filteredTodos.filter(t => t.completed)
+    const done   = filteredTodos.filter(t => t.completed)
 
     if (view === 'today') {
       const today = format(new Date(), 'yyyy-MM-dd')
-      const todayTodos = active.filter(t => t.due_date === today)
-      const doneTodayTodos = done.filter(t => t.due_date === today)
-      return { type: 'flat', active: todayTodos, done: doneTodayTodos }
+      return { type: 'flat', active: active.filter(t => t.due_date === today), done: done.filter(t => t.due_date === today) }
     }
-
     if (view === 'week') {
       const groups = {}
-      const order = []
+      const order  = []
       for (let i = 0; i < 7; i++) {
-        const d = addDays(new Date(), i)
+        const d   = addDays(new Date(), i)
         const key = format(d, 'yyyy-MM-dd')
-        const label = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : format(d, 'EEEE, MMM d')
-        groups[key] = { label, todos: [], accent: i === 0 ? '#ff6b35' : '#6366f1' }
+        groups[key] = { label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : format(d, 'EEEE, MMM d'), todos: [], accent: i === 0 ? '#ff6b35' : '#6366f1' }
         order.push(key)
       }
       groups['no-date'] = { label: 'No Due Date', todos: [], accent: '#6b7280' }
       order.push('no-date')
-
-      active.forEach(t => {
-        const key = t.due_date && groups[t.due_date] ? t.due_date : 'no-date'
-        groups[key].todos.push(t)
-      })
+      active.forEach(t => { const k = t.due_date && groups[t.due_date] ? t.due_date : 'no-date'; groups[k].todos.push(t) })
       return { type: 'grouped', groups: order.map(k => groups[k]) }
     }
-
     if (view === 'month') {
-      const thisMonth = active.filter(t => t.due_date && isThisMonth(parseISO(t.due_date)))
-      const noDate = active.filter(t => !t.due_date)
       return {
-        type: 'grouped',
-        groups: [
-          { label: 'This Month', todos: thisMonth, accent: '#6366f1' },
-          { label: 'No Due Date', todos: noDate, accent: '#6b7280' },
+        type: 'grouped', groups: [
+          { label: 'This Month', todos: active.filter(t => t.due_date && isThisMonth(parseISO(t.due_date))), accent: '#6366f1' },
+          { label: 'No Due Date', todos: active.filter(t => !t.due_date), accent: '#6b7280' },
         ]
       }
     }
-
     if (view.startsWith('project-')) {
-      const pid = view.replace('project-', '')
-      const projectTodos = active.filter(t => t.project_id === pid)
-      const doneProjTodos = done.filter(t => t.project_id === pid)
-      return { type: 'flat', active: projectTodos, done: doneProjTodos }
+      const pid = safeUUID(view.replace('project-', ''))
+      return { type: 'flat', active: active.filter(t => t.project_id === pid), done: done.filter(t => t.project_id === pid) }
     }
-
-    // all
+    // all — grouped by project
     const byProject = {}
     projects.forEach(p => { byProject[p.id] = { label: `${p.icon} ${p.name}`, todos: [], accent: p.color } })
     byProject['none'] = { label: 'Inbox', todos: [], accent: '#6366f1' }
-
-    active.forEach(t => {
-      const key = t.project_id && byProject[t.project_id] ? t.project_id : 'none'
-      byProject[key].todos.push(t)
-    })
-
-    const groups = [byProject['none'], ...projects.map(p => byProject[p.id])]
-    return { type: 'grouped', groups, done }
+    active.forEach(t => { const k = t.project_id && byProject[t.project_id] ? t.project_id : 'none'; byProject[k].todos.push(t) })
+    return { type: 'grouped', groups: [byProject['none'], ...projects.map(p => byProject[p.id])], done }
   }
 
-  const viewData = getViewTodos()
-  const allTags = [...new Set(todos.flatMap(t => t.tags || []))]
+  // ── Render guards ─────────────────────────
+  if (!authReady) return (
+    <div className="loading-screen">
+      <div className="loading-logo">upnext</div>
+      <div className="loading-dots"><span /><span /><span /></div>
+    </div>
+  )
 
-  if (!connected) return <SetupScreen onConnect={handleConnect} />
+  if (!session) return <LoginScreen />
 
   if (loading) return (
     <div className="loading-screen">
@@ -511,8 +600,11 @@ export default function App() {
     </div>
   )
 
+  const viewData = getViewTodos()
+  const allTags  = [...new Set(todos.flatMap(t => t.tags || []))]
   const projectView = view.startsWith('project-') ? projects.find(p => view.includes(p.id)) : null
-  const viewTitle = view === 'today' ? 'Today' : view === 'week' ? 'This Week' : view === 'month' ? 'This Month' : view === 'all' ? 'All Tasks' : projectView?.name || 'Tasks'
+  const viewTitle   = { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Tasks' }[view] || projectView?.name || 'Tasks'
+  const todayCount  = todos.filter(t => !t.completed && t.due_date === format(new Date(), 'yyyy-MM-dd')).length
 
   return (
     <div className="app">
@@ -522,31 +614,24 @@ export default function App() {
 
         <nav className="sidebar-nav">
           <div className="nav-section-label">Views</div>
-          <button className={`nav-item ${view === 'today' ? 'active' : ''}`} onClick={() => setView('today')}>
-            <Sun size={15} /> Today
-            <span className="nav-count">{todos.filter(t => !t.completed && t.due_date === format(new Date(), 'yyyy-MM-dd')).length || ''}</span>
-          </button>
-          <button className={`nav-item ${view === 'week' ? 'active' : ''}`} onClick={() => setView('week')}>
-            <Calendar size={15} /> This Week
-          </button>
-          <button className={`nav-item ${view === 'month' ? 'active' : ''}`} onClick={() => setView('month')}>
-            <LayoutList size={15} /> This Month
-          </button>
-          <button className={`nav-item ${view === 'all' ? 'active' : ''}`} onClick={() => setView('all')}>
-            <CheckCircle2 size={15} /> All Tasks
-          </button>
+          {[
+            { id: 'today', icon: <Sun size={15} />, label: 'Today', count: todayCount },
+            { id: 'week',  icon: <Calendar size={15} />, label: 'This Week' },
+            { id: 'month', icon: <LayoutList size={15} />, label: 'This Month' },
+            { id: 'all',   icon: <CheckCircle2 size={15} />, label: 'All Tasks', count: todos.filter(t => !t.completed).length },
+          ].map(v => (
+            <button key={v.id} className={`nav-item ${view === v.id ? 'active' : ''}`} onClick={() => setView(v.id)}>
+              {v.icon} {v.label}
+              {v.count > 0 && <span className="nav-count">{v.count}</span>}
+            </button>
+          ))}
         </nav>
 
         <nav className="sidebar-nav">
           <div className="nav-section-label">Projects</div>
           {projects.map(p => (
-            <button
-              key={p.id}
-              className={`nav-item ${view === `project-${p.id}` ? 'active' : ''}`}
-              onClick={() => setView(`project-${p.id}`)}
-            >
-              <span style={{ color: p.color }}>{p.icon}</span>
-              {p.name}
+            <button key={p.id} className={`nav-item ${view === `project-${p.id}` ? 'active' : ''}`} onClick={() => setView(`project-${p.id}`)}>
+              <span style={{ color: p.color }}>{p.icon}</span> {p.name}
               <span className="nav-count">{todos.filter(t => !t.completed && t.project_id === p.id).length || ''}</span>
             </button>
           ))}
@@ -556,29 +641,31 @@ export default function App() {
           <nav className="sidebar-nav">
             <div className="nav-section-label">Tags</div>
             {allTags.map(tag => (
-              <button
-                key={tag}
-                className={`nav-item tag-nav ${filter.tag === tag ? 'active' : ''}`}
-                onClick={() => setFilter(f => ({ ...f, tag: f.tag === tag ? '' : tag }))}
-              >
+              <button key={tag} className={`nav-item tag-nav ${filter.tag === tag ? 'active' : ''}`}
+                onClick={() => setFilter(f => ({ ...f, tag: f.tag === tag ? '' : tag }))}>
                 <Tag size={12} /> #{tag}
               </button>
             ))}
           </nav>
         )}
+
+        <div className="sidebar-footer">
+          <button className="nav-item" onClick={signOut} style={{ color: 'var(--text3)' }}>
+            <LogOut size={13} /> Sign out
+          </button>
+        </div>
       </aside>
 
       {/* Main */}
       <main className="main">
+        <ErrorBanner message={error} onDismiss={() => setError('')} />
+
         <div className="main-header">
           <div className="main-header-left">
             <h1 className="view-title">{viewTitle}</h1>
-            {view === 'today' && (
-              <span className="view-date">{format(new Date(), 'EEEE, MMMM d')}</span>
-            )}
+            {view === 'today' && <span className="view-date">{format(new Date(), 'EEEE, MMMM d')}</span>}
           </div>
           <div className="main-header-right">
-            {/* Filters */}
             <select className="filter-select" value={filter.priority} onChange={e => setFilter(f => ({ ...f, priority: e.target.value }))}>
               <option value="">All Priorities</option>
               <option value="high">🔴 High</option>
@@ -595,37 +682,24 @@ export default function App() {
           </div>
         </div>
 
-        <QuickAdd onAdd={(title) => addTodo(title)} />
+        <QuickAdd onAdd={addTodo} />
 
         <div className="main-content">
           {viewData.type === 'flat' ? (
             <>
-              <TodoGroup
-                title="Tasks" todos={viewData.active}
-                projects={projects} categories={categories}
-                onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal}
-                onDragEnd={handleDragEnd} accent="#6366f1"
-              />
-              {viewData.done?.length > 0 && (
-                <TodoGroup
-                  title="Completed" todos={viewData.done}
-                  projects={projects} categories={categories}
-                  onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal}
-                  onDragEnd={handleDragEnd} accent="#6b7280"
-                />
+              <TodoGroup title="Tasks" todos={viewData.active} projects={projects} categories={categories}
+                onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onDragEnd={handleDragEnd} accent="#6366f1" />
+              {(viewData.done?.length > 0) && (
+                <TodoGroup title="Completed" todos={viewData.done} projects={projects} categories={categories}
+                  onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onDragEnd={handleDragEnd} accent="#6b7280" />
               )}
             </>
           ) : (
             viewData.groups.map((g, i) => (
-              <TodoGroup
-                key={i} title={g.label} todos={g.todos}
-                projects={projects} categories={categories}
-                onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal}
-                onDragEnd={handleDragEnd} accent={g.accent}
-              />
+              <TodoGroup key={i} title={g.label} todos={g.todos} projects={projects} categories={categories}
+                onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onDragEnd={handleDragEnd} accent={g.accent} />
             ))
           )}
-
           {filteredTodos.filter(t => !t.completed).length === 0 && (
             <div className="empty-state">
               <CheckCircle2 size={40} />
@@ -635,7 +709,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Modal */}
       {modal && (
         <TodoModal
           todo={modal === 'new' ? null : modal}

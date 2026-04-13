@@ -675,6 +675,43 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   40% { transform: scale(1); opacity: 1; }
 }
 
+/* ── Error Banner ── */
+.error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 24px;
+  background: rgba(239,68,68,0.1);
+  border-bottom: 1px solid rgba(239,68,68,0.2);
+  color: #ef4444;
+  font-size: 13px;
+}
+.error-banner span { flex: 1; }
+
+.form-error {
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.2);
+  color: #ef4444;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+}
+
+.char-count {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text3);
+  text-align: right;
+  margin-top: -8px;
+}
+
+/* ── Sidebar footer ── */
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
