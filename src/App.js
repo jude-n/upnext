@@ -105,7 +105,10 @@ function LoginScreen() {
     setError('')
     const { error: err } = await supabase.auth.signInWithOtp({
       email: clean,
-      options: { emailRedirectTo: window.location.origin }
+      options: {
+        emailRedirectTo: window.location.origin,
+        shouldCreateUser: true,
+      }
     })
     setLoading(false)
     if (err) { setError(err.message); return }
@@ -422,15 +425,23 @@ export default function App() {
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState('')
 
-  // ── Auth state ───────────────────────────
+// ── Auth state ───────────────────────────
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setAuthReady(true)
     })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => {
-      setSession(s)
-      if (!s) { setTodos([]); setProjects([]); setCategories([]) }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN') {
+        setSession(session)
+        setAuthReady(true)
+      }
+      if (event === 'SIGNED_OUT') {
+        setSession(null)
+        setTodos([])
+        setProjects([])
+        setCategories([])
+      }
     })
     return () => subscription.unsubscribe()
   }, [])
