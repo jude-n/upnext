@@ -89,14 +89,14 @@ function ErrorBanner({ message, onDismiss }) {
 
 // ─── Login Screen ─────────────────────────────────────────────────────────────
 function LoginScreen() {
-  const [email, setEmail] = useState('')
-  const [sent, setSent] = useState(false)
+  const [email,   setEmail]   = useState('')
+  const [code,    setCode]    = useState('')
+  const [step,    setStep]    = useState('email') // 'email' | 'code'
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [error,   setError]   = useState('')
 
-  const handleLogin = async () => {
+  const sendCode = async () => {
     const clean = email.trim().toLowerCase()
-    // Basic email shape check — Supabase validates properly server-side
     if (!clean || !clean.includes('@') || !clean.includes('.')) {
       setError('Please enter a valid email address.')
       return
@@ -105,53 +105,87 @@ function LoginScreen() {
     setError('')
     const { error: err } = await supabase.auth.signInWithOtp({
       email: clean,
-      options: {
-        emailRedirectTo: window.location.origin,
-        shouldCreateUser: true,
-      }
+      options: { shouldCreateUser: true }
+      // No emailRedirectTo — we're using the code, not the link
     })
     setLoading(false)
     if (err) { setError(err.message); return }
-    setSent(true)
+    setStep('code')
   }
 
-  if (sent) return (
-    <div className="setup-screen">
-      <div className="setup-card">
-        <div className="setup-logo">upnext</div>
-        <p className="setup-sub">Check your email for a magic link to sign in.</p>
-        <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 8 }}>
-          Sent to <strong style={{ color: 'var(--text2)' }}>{email}</strong>
-        </p>
-        <button className="btn-ghost" style={{ marginTop: 20, width: '100%' }} onClick={() => setSent(false)}>
-          ← Use a different email
-        </button>
+  const verifyCode = async () => {
+    const clean = code.trim()
+    if (clean.length !== 6) {
+      setError('Please enter the 6-digit code from your email.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    const { error: err } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: clean,
+      type:  'email',
+    })
+    setLoading(false)
+    if (err) { setError('Invalid or expired code. Try sending a new one.'); return }
+    // onAuthStateChange in the main app will pick up the SIGNED_IN event
+  }
+
+  if (step === 'code') return (
+      <div className="setup-screen">
+        <div className="setup-card">
+          <div className="setup-logo">upnext</div>
+          <p className="setup-sub">Check your email for a 6-digit code.</p>
+          <p style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4, marginBottom: 16 }}>
+            Sent to <strong style={{ color: 'var(--text2)' }}>{email}</strong>
+          </p>
+          {error && <div className="form-error" style={{ marginBottom: 12 }}>{error}</div>}
+          <div className="setup-fields">
+            <input
+                type="number"
+                inputMode="numeric"
+                placeholder="123456"
+                value={code}
+                onChange={e => setCode(e.target.value.slice(0, 6))}
+                onKeyDown={e => e.key === 'Enter' && verifyCode()}
+                autoComplete="one-time-code"
+                autoFocus
+                style={{ fontSize: 24, letterSpacing: 8, textAlign: 'center' }}
+            />
+          </div>
+          <button className="btn-primary full" onClick={verifyCode} disabled={loading || code.length !== 6}>
+            {loading ? 'Verifying…' : 'Verify Code →'}
+          </button>
+          <button className="btn-ghost" style={{ marginTop: 10, width: '100%' }}
+                  onClick={() => { setStep('email'); setCode(''); setError('') }}>
+            ← Use a different email
+          </button>
+        </div>
       </div>
-    </div>
   )
 
   return (
-    <div className="setup-screen">
-      <div className="setup-card">
-        <div className="setup-logo">upnext</div>
-        <p className="setup-sub">Sign in with a magic link — no password needed.</p>
-        {error && <div className="form-error">{error}</div>}
-        <div className="setup-fields">
-          <input
-            type="email"
-            placeholder="your@email.com"
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleLogin()}
-            autoComplete="email"
-            maxLength={254}
-          />
+      <div className="setup-screen">
+        <div className="setup-card">
+          <div className="setup-logo">upnext</div>
+          <p className="setup-sub">Enter your email to get a sign-in code.</p>
+          {error && <div className="form-error" style={{ marginBottom: 12 }}>{error}</div>}
+          <div className="setup-fields">
+            <input
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendCode()}
+                autoComplete="email"
+                maxLength={254}
+            />
+          </div>
+          <button className="btn-primary full" onClick={sendCode} disabled={loading || !email}>
+            {loading ? 'Sending…' : 'Send Code →'}
+          </button>
         </div>
-        <button className="btn-primary full" onClick={handleLogin} disabled={loading || !email}>
-          {loading ? 'Sending…' : 'Send Magic Link →'}
-        </button>
       </div>
-    </div>
   )
 }
 
