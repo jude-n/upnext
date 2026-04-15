@@ -115,8 +115,8 @@ function LoginScreen() {
 
   const verifyCode = async () => {
     const clean = code.trim()
-    if (clean.length !== 6) {
-      setError('Please enter the 6-digit code from your email.')
+    if (clean.length !== 8) {
+      setError('Please enter the 8-digit code from your email.')
       return
     }
     setLoading(true)
@@ -146,14 +146,14 @@ function LoginScreen() {
                 inputMode="numeric"
                 placeholder="123456"
                 value={code}
-                onChange={e => setCode(e.target.value.slice(0, 6))}
+                onChange={e => setCode(e.target.value.slice(0, 8))}
                 onKeyDown={e => e.key === 'Enter' && verifyCode()}
                 autoComplete="one-time-code"
                 autoFocus
                 style={{ fontSize: 24, letterSpacing: 8, textAlign: 'center' }}
             />
           </div>
-          <button className="btn-primary full" onClick={verifyCode} disabled={loading || code.length !== 6}>
+          <button className="btn-primary full" onClick={verifyCode} disabled={loading || code.length !== 8}>
             {loading ? 'Verifying…' : 'Verify Code →'}
           </button>
           <button className="btn-ghost" style={{ marginTop: 10, width: '100%' }}
