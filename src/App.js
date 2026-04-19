@@ -540,6 +540,7 @@ export default function App() {
   const [view,       setView]       = useState('today')
   const [modal,      setModal]      = useState(null)
   const [mgr,        setMgr]        = useState(null)  // 'projects' | 'categories' | null
+  const [drawer,     setDrawer]     = useState(false) // mobile menu drawer
   const [filter,     setFilter]     = useState({ category: '', priority: '', tag: '' })
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState('')
@@ -897,6 +898,96 @@ export default function App() {
       {mgr === 'categories' && (
         <CategoryManager categories={categories} userId={userId}
           onClose={() => setMgr(null)} onAdd={addCategory} onDelete={deleteCategory} />
+      )}
+
+      {/* ── Mobile Tab Bar ── */}
+      <nav className="mobile-tab-bar">
+        {[
+          { id: 'today', icon: <Sun size={20} />,          label: 'Today',   count: todayCount },
+          { id: 'week',  icon: <Calendar size={20} />,     label: 'Week' },
+          { id: 'all',   icon: <CheckCircle2 size={20} />, label: 'All',     count: todos.filter(t => !t.completed).length },
+        ].map(v => (
+          <button key={v.id} className={`tab-btn ${view === v.id ? 'active' : ''}`}
+            onClick={() => { setView(v.id); setDrawer(false) }}>
+            {v.count > 0 && <span className="tab-badge">{v.count}</span>}
+            {v.icon}
+            {v.label}
+          </button>
+        ))}
+        <button className={`tab-btn ${drawer ? 'active' : ''}`} onClick={() => setDrawer(d => !d)}>
+          <Settings size={20} />
+          More
+        </button>
+      </nav>
+
+      {/* ── Mobile Drawer ── */}
+      {drawer && (
+        <>
+          <div className="drawer-overlay" onClick={() => setDrawer(false)} />
+          <div className="drawer">
+            <div className="drawer-handle" />
+
+            <div className="drawer-section">
+              <div className="drawer-section-label">
+                <span>Projects</span>
+                <button className="nav-action-btn" onClick={() => { setMgr('projects'); setDrawer(false) }}>
+                  <Settings size={11} />
+                </button>
+              </div>
+              {projects.length === 0 && (
+                <button className="drawer-item" onClick={() => { setMgr('projects'); setDrawer(false) }}>
+                  <Plus size={14} /> Add a project
+                </button>
+              )}
+              {projects.map(p => (
+                <button key={p.id}
+                  className={`drawer-item ${view === `project-${p.id}` ? 'active' : ''}`}
+                  onClick={() => { setView(`project-${p.id}`); setDrawer(false) }}>
+                  <span style={{ color: p.color }}>{p.icon}</span> {p.name}
+                  <span className="drawer-item-count">{todos.filter(t => !t.completed && t.project_id === p.id).length || ''}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="drawer-section">
+              <div className="drawer-section-label">
+                <span>Categories</span>
+                <button className="nav-action-btn" onClick={() => { setMgr('categories'); setDrawer(false) }}>
+                  <Settings size={11} />
+                </button>
+              </div>
+              {categories.length === 0 && (
+                <button className="drawer-item" onClick={() => { setMgr('categories'); setDrawer(false) }}>
+                  <Plus size={14} /> Add a category
+                </button>
+              )}
+              {categories.map(c => (
+                <button key={c.id}
+                  className={`drawer-item ${filter.category === c.id ? 'active' : ''}`}
+                  onClick={() => { setFilter(f => ({ ...f, category: f.category === c.id ? '' : c.id })); setDrawer(false) }}>
+                  <span className="cat-dot" style={{ background: c.color }} /> {c.name}
+                </button>
+              ))}
+            </div>
+
+            {allTags.length > 0 && (
+              <div className="drawer-section">
+                <div className="drawer-section-label">Tags</div>
+                {allTags.map(tag => (
+                  <button key={tag}
+                    className={`drawer-item ${filter.tag === tag ? 'active' : ''}`}
+                    onClick={() => { setFilter(f => ({ ...f, tag: f.tag === tag ? '' : tag })); setDrawer(false) }}>
+                    <Tag size={13} /> #{tag}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <button className="drawer-sign-out" onClick={signOut}>
+              <LogOut size={14} /> Sign out
+            </button>
+          </div>
+        </>
       )}
     </div>
   )
