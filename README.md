@@ -19,12 +19,16 @@ UpNext is a **personal task management application** designed for productivity e
 
 ---
 
-## Database Schema
+## Database schema
 
 The following diagram shows the core tables, primary keys (PK), foreign keys (FK), and cardinality. The SQL schema lives in `SUPABASE_SCHEMA.sql`.
 
 ```mermaid
 erDiagram
+    AUTH_USERS {
+        UUID id PK "supabase auth.users"
+    }
+
     PROJECTS {
         UUID id PK "gen_random_uuid()"
         TEXT name
@@ -35,14 +39,16 @@ erDiagram
     }
 
     CATEGORIES {
-        UUID id PK "gen_random_uuid()"
+        UUID id PK
+        UUID user_id FK
         TEXT name
         TEXT color
         TIMESTAMPTZ created_at
     }
 
     TODOS {
-        UUID id PK "gen_random_uuid()"
+        UUID id PK
+        UUID user_id FK
         TEXT title
         TEXT notes
         BOOLEAN completed
@@ -52,18 +58,74 @@ erDiagram
         TEXT[] tags
         TEXT priority
         INTEGER sort_order
+        BOOLEAN pinned
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
 
+    AUTH_USERS ||--o{ PROJECTS : "owns"
+    AUTH_USERS ||--o{ CATEGORIES : "owns"
+    AUTH_USERS ||--o{ TODOS : "owns"
     PROJECTS ||--o{ TODOS : "has many"
     CATEGORIES ||--o{ TODOS : "has many"
 ```
 
-Notes:
-- `todos.project_id` and `todos.category_id` reference `projects(id)` and `categories(id)` respectively. In the SQL they are created with `ON DELETE SET NULL`, so deleting a project/category will not delete todos — it will null the foreign key.
-- `tags` is stored as a `TEXT[]` in Postgres; consider a join table for many-to-many tagging if you need tag metadata or fast tag queries.
-- Indexes (e.g., on `due_date`, `project_id`, `completed`, `sort_order`) are defined in `SUPABASE_SCHEMA.sql` for query performance.
+Table summaries (from `SUPABASE_SCHEMA.sql`):
+
+- Projects
+  - id: UUID PK, default gen_random_uuid()
+  - user_id: UUID NOT NULL → references auth.users(id) ON DELETE CASCADE
+  - name: TEXT NOT NULL (1..100 chars)
+  - color: TEXT NOT NULL default '#6366f1' (hex color check)
+  - icon: TEXT default '📁' (<= 10 chars)
+  - created_at: TIMESTAMPTZ default NOW()
+  - updated_at: TIMESTAMPTZ default NOW()
+
+- Categories
+  - id: UUID PK, default gen_random_uuid()
+  - user_id: UUID NOT NULL → references auth.users(id) ON DELETE CASCADE
+  - name: TEXT NOT NULL (1..50 chars)
+  - color: TEXT NOT NULL default '#6366f1' (hex color check)
+  - created_at: TIMESTAMPTZ default NOW()
+
+- Todos
+  - id: UUID PK, default gen_random_uuid()
+  - user_id: UUID NOT NULL → references auth.users(id) ON DELETE CASCADE
+  - title: TEXT NOT NULL (1..500 chars)
+  - notes: TEXT (nullable, <= 5000 chars)
+  - completed: BOOLEAN default FALSE
+  - due_date: DATE (nullable)
+  - project_id: UUID nullable → references projects(id) ON DELETE SET NULL
+  - category_id: UUID nullable → references categories(id) ON DELETE SET NULL
+  - tags: TEXT[] default '{}'
+  - priority: TEXT default 'medium' CHECK IN ('low','medium','high')
+  - sort_order: INTEGER default 0
+  - pinned: BOOLEAN default FALSE (added via ALTER TABLE)
+  - created_at: TIMESTAMPTZ default NOW()
+  - updated_at: TIMESTAMPTZ default NOW()
+
+Other DB-level items included in `SUPABASE_SCHEMA.sql`:
+
+- Indexes: todos(user_id), todos(due_date), todos(project_id), todos(completed), projects(user_id), categories(user_id)
+- Triggers: `update_updated_at()` and triggers applied to `todos` and `projects` to auto-update `updated_at` on UPDATE
+- Row Level Security (RLS) enabled for `todos`, `projects`, `categories` and owner-only policies using `auth.uid()`
+- Realtime publication lines for `todos`, `projects`, `categories` (Supabase-specific)
+
+What is missing / recommendations
+- categories.updated_at: there is no `updated_at` column or trigger for `categories`. Add `updated_at TIMESTAMPTZ` and include it in the trigger if you want to track edits.
+- Seeds: `SUPABASE_SCHEMA.sql` creates structure but does not insert seed data. README previously said it seeds default data; it does not.
+- Tags: `tags` is a TEXT[] (simple). If you need tag metadata, counts, or performant tag queries, create a normalized `tags` table and a `todo_tags` join table (many-to-many).
+- Uniqueness constraints: consider making `projects(user_id, name)` and `categories(user_id, name)` unique to avoid duplicate-named projects/categories per user.
+- Indexes: consider indexing `todos(user_id, completed, due_date)` composite indexes for common queries, and a `GIN` index on `tags` if you keep the array type.
+- Soft deletes: if you need to preserve removed rows, add a `deleted_at TIMESTAMPTZ` instead of hard deletes (RLS and policies may need updating).
+- Full-text search: add a tsvector column and index if you want fast searching across titles/notes.
+- Categories icon: categories currently have no `icon` column — if you want icons like projects have, add it.
+
+If you'd like, I can:
+- add `updated_at` to `categories` and apply the `update_updated_at` trigger there
+- propose SQL to normalize `tags` to a `tags` + `todo_tags` join table
+- add suggested indexes and uniqueness constraints
+
 
 
 ---
@@ -79,7 +141,7 @@ Notes:
 1. In your Supabase dashboard, go to **SQL Editor**
 2. Open the file `SUPABASE_SCHEMA.sql` from this folder
 3. Paste the entire contents into the SQL editor
-4. Click **Run** — this creates the tables and seeds default data
+4. Click **Run** — this creates the tables (no seed data included)
 
 ### Step 3 — Get your API keys
 1. Go to **Settings → API** in your Supabase dashboard

@@ -39,6 +39,7 @@ CREATE TABLE todos (
   created_at  TIMESTAMPTZ DEFAULT NOW(),
   updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE todos ADD COLUMN IF NOT EXISTS pinned BOOLEAN DEFAULT FALSE;
 
 -- ── Indexes ───────────────────────────────
 CREATE INDEX todos_user_id_idx      ON todos(user_id);
