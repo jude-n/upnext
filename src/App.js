@@ -566,11 +566,13 @@ export default function App() {
       supabase.from('projects').select('id,name,color,icon').order('created_at'),
       supabase.from('categories').select('id,name,color').order('name'),
     ]).then(([t, p, c]) => {
-      if (t.error) { setError('Failed to load tasks.'); return }
-      setTodos(t.data || [])
-      setProjects(p.data || [])
-      setCategories(c.data || [])
-      setLoading(false)
+      if (t.error) { setError('Failed to load tasks: ' + t.error.message) }
+      else {
+        setTodos(t.data || [])
+        setProjects(p.data || [])
+        setCategories(c.data || [])
+      }
+      setLoading(false)  // always runs now, never gets stuck
     })
   }, [session])
 
