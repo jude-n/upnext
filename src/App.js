@@ -766,7 +766,8 @@ export default function App() {
     if (!session) return
     const channel = supabase.channel('todos-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, payload => {
-        if (payload.eventType === 'INSERT') setTodos(t => [...t, payload.new])
+        // INSERT is handled manually in addTodo (we need the returned record for subtasks/comments)
+        // Only handle UPDATE and DELETE via realtime
         if (payload.eventType === 'UPDATE') setTodos(t => t.map(x => x.id === payload.new.id ? payload.new : x))
         if (payload.eventType === 'DELETE') setTodos(t => t.filter(x => x.id !== payload.old.id))
       })
@@ -791,13 +792,8 @@ export default function App() {
     // Use select() so we get the created record back
     const { data, error: err } = await supabase.from('todos').insert(newTodo).select().single()
     if (err) { setError('Failed to add task.'); return }
-    // Manually add to state (realtime would duplicate since we're selecting)
-    if (data) setTodos(t => {
-      // Avoid duplicate if realtime fires too
-      if (t.find(x => x.id === data.id)) return t
-      return [...t, data]
-    })
-    return data // return so saveTodo can re-open modal
+    if (data) setTodos(t => [...t, data])
+    return data
   }
 
   const updateTodo = async (updated) => {
