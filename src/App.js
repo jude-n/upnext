@@ -11,19 +11,23 @@ import { supabase } from './supabase'
 import {
   Plus, Grip, Tag, Calendar, ChevronDown, ChevronRight,
   X, Edit2, Trash2, Sun, LayoutList, Clock, Circle,
-  CheckCircle2, LogOut, AlertTriangle, Pin, Settings
+  CheckCircle2, LogOut, AlertTriangle, Pin, Settings,
+  MessageSquare, ListChecks, Download, Upload, Send
 } from 'lucide-react'
 import { format, isToday, isTomorrow, isThisWeek, isThisMonth, parseISO, isPast, addDays } from 'date-fns'
 import './App.css'
 
 // ─── Constants & validation ───────────────────────────────────────────────────
 const LIMITS = {
-  title:    500,
-  notes:    5000,
-  tag:      50,
-  tagCount: 20,
-  projName: 100,
-  catName:  50,
+  title:       500,
+  notes:       5000,
+  tag:         50,
+  tagCount:    20,
+  projName:    100,
+  projDesc:    500,
+  catName:     50,
+  comment:     2000,
+  subtitle:    200,
 }
 
 const VALID_PRIORITIES = ['low', 'medium', 'high']
@@ -168,6 +172,7 @@ function LoginScreen() {
 // ─── Project Manager Modal ────────────────────────────────────────────────────
 function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
   const [name,  setName]  = useState('')
+  const [desc,  setDesc]  = useState('')
   const [color, setColor] = useState(PRESET_COLORS[0])
   const [icon,  setIcon]  = useState(PRESET_ICONS[0])
   const [error, setError] = useState('')
@@ -177,8 +182,8 @@ function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
     if (!clean) { setError('Name is required.'); return }
     if (clean.length > LIMITS.projName) { setError('Name too long.'); return }
     setError('')
-    await onAdd({ name: clean, color: safeColor(color), icon, user_id: userId })
-    setName('')
+    await onAdd({ name: clean, description: sanitizeText(desc) || null, color: safeColor(color), icon, user_id: userId })
+    setName(''); setDesc('')
   }
 
   return (
@@ -195,7 +200,10 @@ function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
             {projects.map(p => (
               <div key={p.id} className="manager-row">
                 <span style={{ color: p.color, fontSize: 16 }}>{p.icon}</span>
-                <span className="manager-name">{p.name}</span>
+                <div className="manager-name-group">
+                  <span className="manager-name">{p.name}</span>
+                  {p.description && <span className="manager-desc">{p.description}</span>}
+                </div>
                 <button className="icon-btn danger" onClick={() => onDelete(p.id)}><Trash2 size={13} /></button>
               </div>
             ))}
@@ -207,6 +215,12 @@ function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
               onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
               maxLength={LIMITS.projName} />
+          </div>
+          <div className="modal-field">
+            <label>Description (optional)</label>
+            <input placeholder="What's this project about?" value={desc}
+              onChange={e => setDesc(e.target.value)}
+              maxLength={LIMITS.projDesc} />
           </div>
           <div className="modal-field">
             <label>Icon</label>
@@ -364,8 +378,147 @@ function TodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, onPi
   )
 }
 
-// ─── Todo Modal ───────────────────────────────────────────────────────────────
-function TodoModal({ todo, projects, categories, onSave, onClose }) {
+// ─── Subtask Panel ────────────────────────────────────────────────────────────
+function SubtaskPanel({ todoId, userId }) {
+  const [subtasks, setSubtasks] = useState([])
+  const [newTitle, setNewTitle] = useState('')
+  const [loading,  setLoading]  = useState(true)
+
+  useEffect(() => {
+    if (!todoId) return
+    supabase.from('subtasks').select('*').eq('todo_id', todoId).order('sort_order')
+      .then(({ data }) => { setSubtasks(data || []); setLoading(false) })
+  }, [todoId])
+
+  const addSubtask = async () => {
+    const clean = sanitizeText(newTitle)
+    if (!clean || clean.length > LIMITS.subtitle) return
+    const { data } = await supabase.from('subtasks')
+      .insert({ todo_id: todoId, user_id: userId, title: clean, sort_order: subtasks.length })
+      .select().single()
+    if (data) setSubtasks(s => [...s, data])
+    setNewTitle('')
+  }
+
+  const toggleSubtask = async (sub) => {
+    await supabase.from('subtasks').update({ completed: !sub.completed }).eq('id', sub.id)
+    setSubtasks(s => s.map(x => x.id === sub.id ? { ...x, completed: !x.completed } : x))
+  }
+
+  const deleteSubtask = async (id) => {
+    await supabase.from('subtasks').delete().eq('id', id)
+    setSubtasks(s => s.filter(x => x.id !== id))
+  }
+
+  const done  = subtasks.filter(s => s.completed).length
+  const total = subtasks.length
+  const pct   = total > 0 ? Math.round((done / total) * 100) : 0
+
+  return (
+    <div className="sub-panel">
+      <div className="sub-panel-header">
+        <ListChecks size={13} />
+        <span>Subtasks</span>
+        {total > 0 && <span className="sub-progress-label">{done}/{total}</span>}
+      </div>
+
+      {total > 0 && (
+        <div className="sub-progress-bar">
+          <div className="sub-progress-fill" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+
+      {loading ? <p style={{ color: 'var(--text3)', fontSize: 12 }}>Loading…</p> : (
+        <div className="sub-list">
+          {subtasks.map(sub => (
+            <div key={sub.id} className={`sub-item ${sub.completed ? 'completed' : ''}`}>
+              <button className="sub-check" onClick={() => toggleSubtask(sub)}>
+                {sub.completed ? <CheckCircle2 size={15} className="check-done" /> : <Circle size={15} className="check-empty" />}
+              </button>
+              <span className="sub-title">{sub.title}</span>
+              <button className="icon-btn danger" onClick={() => deleteSubtask(sub.id)}><X size={11} /></button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="sub-add">
+        <input placeholder="Add subtask… (Enter)" value={newTitle}
+          onChange={e => setNewTitle(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addSubtask()}
+          maxLength={LIMITS.subtitle} />
+        {newTitle && <button className="icon-btn" onClick={addSubtask}><Plus size={13} /></button>}
+      </div>
+    </div>
+  )
+}
+
+// ─── Comments Panel ───────────────────────────────────────────────────────────
+function CommentsPanel({ todoId, userId }) {
+  const [comments, setComments] = useState([])
+  const [newText,  setNewText]  = useState('')
+  const [loading,  setLoading]  = useState(true)
+
+  useEffect(() => {
+    if (!todoId) return
+    supabase.from('comments').select('*').eq('todo_id', todoId).order('created_at')
+      .then(({ data }) => { setComments(data || []); setLoading(false) })
+  }, [todoId])
+
+  const addComment = async () => {
+    const clean = sanitizeText(newText)
+    if (!clean || clean.length > LIMITS.comment) return
+    const { data } = await supabase.from('comments')
+      .insert({ todo_id: todoId, user_id: userId, body: clean })
+      .select().single()
+    if (data) setComments(c => [...c, data])
+    setNewText('')
+  }
+
+  const deleteComment = async (id) => {
+    await supabase.from('comments').delete().eq('id', id)
+    setComments(c => c.filter(x => x.id !== id))
+  }
+
+  return (
+    <div className="sub-panel">
+      <div className="sub-panel-header">
+        <MessageSquare size={13} />
+        <span>Updates & Comments</span>
+        {comments.length > 0 && <span className="sub-progress-label">{comments.length}</span>}
+      </div>
+
+      {loading ? <p style={{ color: 'var(--text3)', fontSize: 12 }}>Loading…</p> : (
+        <div className="comment-list">
+          {comments.length === 0 && <p className="comment-empty">No updates yet. Add one below.</p>}
+          {comments.map(c => (
+            <div key={c.id} className="comment-item">
+              <div className="comment-body">{c.body}</div>
+              <div className="comment-footer">
+                <span className="comment-time">{format(parseISO(c.created_at), 'MMM d, h:mm a')}</span>
+                <button className="icon-btn danger" onClick={() => deleteComment(c.id)}><Trash2 size={11} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="comment-add">
+        <textarea placeholder="Add an update or note…" value={newText}
+          onChange={e => setNewText(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), addComment())}
+          maxLength={LIMITS.comment} rows={2} />
+        <button className="btn-primary small" onClick={addComment} disabled={!newText.trim()}>
+          <Send size={12} /> Post
+        </button>
+      </div>
+    </div>
+  )
+}
+
+
+function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
+  const [tab,  setTab]  = useState('details')
   const [form, setForm] = useState({
     title:       todo?.title       || '',
     notes:       todo?.notes       || '',
@@ -378,6 +531,7 @@ function TodoModal({ todo, projects, categories, onSave, onClose }) {
   })
   const [errors, setErrors] = useState([])
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const isExisting = !!todo?.id
 
   const handleSave = () => {
     const { errors: errs, title, notes } = validateTodoForm(form)
@@ -396,71 +550,101 @@ function TodoModal({ todo, projects, categories, onSave, onClose }) {
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal">
+      <div className={`modal ${isExisting ? 'modal-large' : ''}`}>
         <div className="modal-header">
-          <span>{todo?.id ? 'Edit Task' : 'New Task'}</span>
+          <span>{isExisting ? 'Edit Task' : 'New Task'}</span>
           <button className="icon-btn" onClick={onClose}><X size={16} /></button>
         </div>
-        <div className="modal-body">
-          {errors.length > 0 && <div className="form-error">{errors.join(' ')}</div>}
-          <input className="modal-title-input" placeholder="What needs to be done?"
-            value={form.title} onChange={e => set('title', e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSave()}
-            maxLength={LIMITS.title} autoFocus />
-          <div className="char-count">{form.title.length}/{LIMITS.title}</div>
-          <textarea className="modal-notes" placeholder="Notes (optional)"
-            value={form.notes} onChange={e => set('notes', e.target.value)}
-            maxLength={LIMITS.notes} rows={2} />
 
-          <label className="pin-toggle">
-            <input type="checkbox" checked={form.pinned} onChange={e => set('pinned', e.target.checked)} />
-            <Pin size={13} />
-            <span>Always show in Today</span>
-          </label>
+        {isExisting && (
+          <div className="modal-tabs">
+            {[
+              { id: 'details',  label: 'Details' },
+              { id: 'subtasks', label: 'Subtasks', icon: <ListChecks size={12} /> },
+              { id: 'comments', label: 'Updates',  icon: <MessageSquare size={12} /> },
+            ].map(t => (
+              <button key={t.id} className={`modal-tab ${tab === t.id ? 'active' : ''}`}
+                onClick={() => setTab(t.id)}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+        )}
 
-          <div className="modal-row">
-            <div className="modal-field">
-              <label>Due Date</label>
-              <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+        {tab === 'details' && (
+          <>
+            <div className="modal-body">
+              {errors.length > 0 && <div className="form-error">{errors.join(' ')}</div>}
+              <input className="modal-title-input" placeholder="What needs to be done?"
+                value={form.title} onChange={e => set('title', e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSave()}
+                maxLength={LIMITS.title} autoFocus />
+              <div className="char-count">{form.title.length}/{LIMITS.title}</div>
+              <textarea className="modal-notes" placeholder="Notes (optional)"
+                value={form.notes} onChange={e => set('notes', e.target.value)}
+                maxLength={LIMITS.notes} rows={2} />
+              <label className="pin-toggle">
+                <input type="checkbox" checked={form.pinned} onChange={e => set('pinned', e.target.checked)} />
+                <Pin size={13} />
+                <span>Always show in Today</span>
+              </label>
+              <div className="modal-row">
+                <div className="modal-field">
+                  <label>Due Date</label>
+                  <input type="date" value={form.due_date} onChange={e => set('due_date', e.target.value)} />
+                </div>
+                <div className="modal-field">
+                  <label>Priority</label>
+                  <select value={form.priority} onChange={e => set('priority', e.target.value)}>
+                    <option value="high">🔴 High</option>
+                    <option value="medium">🟡 Medium</option>
+                    <option value="low">⚪ Low</option>
+                  </select>
+                </div>
+              </div>
+              <div className="modal-row">
+                <div className="modal-field">
+                  <label>Project</label>
+                  <select value={form.project_id} onChange={e => set('project_id', e.target.value)}>
+                    <option value="">No Project</option>
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.icon} {p.name}</option>)}
+                  </select>
+                </div>
+                <div className="modal-field">
+                  <label>Category</label>
+                  <select value={form.category_id} onChange={e => set('category_id', e.target.value)}>
+                    <option value="">No Category</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="modal-field">
+                <label>Tags (comma separated)</label>
+                <input placeholder="e.g. urgent, review, design" value={form.tags}
+                  onChange={e => set('tags', e.target.value)}
+                  maxLength={LIMITS.tag * LIMITS.tagCount} />
+              </div>
             </div>
-            <div className="modal-field">
-              <label>Priority</label>
-              <select value={form.priority} onChange={e => set('priority', e.target.value)}>
-                <option value="high">🔴 High</option>
-                <option value="medium">🟡 Medium</option>
-                <option value="low">⚪ Low</option>
-              </select>
+            <div className="modal-footer">
+              <button className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" onClick={handleSave}>
+                {isExisting ? 'Save Changes' : 'Add Task'}
+              </button>
             </div>
+          </>
+        )}
+
+        {tab === 'subtasks' && isExisting && (
+          <div className="modal-body modal-body-tab">
+            <SubtaskPanel todoId={todo.id} userId={userId} />
           </div>
-          <div className="modal-row">
-            <div className="modal-field">
-              <label>Project</label>
-              <select value={form.project_id} onChange={e => set('project_id', e.target.value)}>
-                <option value="">No Project</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.icon} {p.name}</option>)}
-              </select>
-            </div>
-            <div className="modal-field">
-              <label>Category</label>
-              <select value={form.category_id} onChange={e => set('category_id', e.target.value)}>
-                <option value="">No Category</option>
-                {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
-            </div>
+        )}
+
+        {tab === 'comments' && isExisting && (
+          <div className="modal-body modal-body-tab">
+            <CommentsPanel todoId={todo.id} userId={userId} />
           </div>
-          <div className="modal-field">
-            <label>Tags (comma separated)</label>
-            <input placeholder="e.g. urgent, review, design" value={form.tags}
-              onChange={e => set('tags', e.target.value)}
-              maxLength={LIMITS.tag * LIMITS.tagCount} />
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button className="btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn-primary" onClick={handleSave}>
-            {todo?.id ? 'Save Changes' : 'Add Task'}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   )
@@ -604,9 +788,9 @@ export default function App() {
       ...(view.startsWith('project-') ? { project_id: safeUUID(view.replace('project-', '')) } : {}),
       ...(view === 'today' ? { due_date: format(new Date(), 'yyyy-MM-dd') } : {}),
     }
-    const { data, error: err } = await supabase.from('todos').insert(newTodo).select().single()
+    const { error: err } = await supabase.from('todos').insert(newTodo)
     if (err) { setError('Failed to add task.'); return }
-    if (data) setTodos(t => [...t, data])
+    // Realtime INSERT event updates state — no manual push needed (prevents duplicates)
     setModal(null)
   }
 
@@ -677,6 +861,87 @@ export default function App() {
     const { error: err } = await supabase.from('categories').delete().eq('id', id)
     if (err) { setError('Failed to delete category.'); return }
     setCategories(c => c.filter(x => x.id !== id))
+  }
+
+  // ── Export CSV ────────────────────────────
+  const exportCSV = () => {
+    const headers = ['title','notes','priority','due_date','completed','pinned','tags','project','category']
+    const rows = todos.map(t => {
+      const proj = projects.find(p => p.id === t.project_id)
+      const cat  = categories.find(c => c.id === t.category_id)
+      return [
+        `"${(t.title  || '').replace(/"/g,'""')}"`,
+        `"${(t.notes  || '').replace(/"/g,'""')}"`,
+        t.priority || 'medium',
+        t.due_date || '',
+        t.completed ? 'true' : 'false',
+        t.pinned    ? 'true' : 'false',
+        `"${(t.tags || []).join(';')}"`,
+        `"${(proj?.name || '').replace(/"/g,'""')}"`,
+        `"${(cat?.name  || '').replace(/"/g,'""')}"`,
+      ].join(',')
+    })
+    const csv  = [headers.join(','), ...rows].join('\n')
+    const blob = new Blob([csv], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `upnext-export-${format(new Date(), 'yyyy-MM-dd')}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // ── Import CSV ────────────────────────────
+  const importCSV = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file || !userId) return
+    const text  = await file.text()
+    const lines = text.split('\n').filter(Boolean)
+    if (lines.length < 2) { setError('CSV appears empty.'); return }
+    const headers = lines[0].split(',').map(h => h.trim().toLowerCase())
+    const titleIdx = headers.indexOf('title')
+    if (titleIdx === -1) { setError('CSV must have a "title" column.'); return }
+
+    const parseField = (val) => val?.replace(/^"|"$/g, '').replace(/""/g, '"').trim() || ''
+
+    const inserts = lines.slice(1).map(line => {
+      // Simple CSV parse — handles quoted fields
+      const fields = []
+      let cur = '', inQuote = false
+      for (const ch of line) {
+        if (ch === '"') { inQuote = !inQuote }
+        else if (ch === ',' && !inQuote) { fields.push(cur); cur = '' }
+        else cur += ch
+      }
+      fields.push(cur)
+
+      const get = (key) => parseField(fields[headers.indexOf(key)])
+      const title = sanitizeText(get('title'))
+      if (!title) return null
+
+      return {
+        user_id:   userId,
+        title:     title.slice(0, LIMITS.title),
+        notes:     sanitizeText(get('notes')).slice(0, LIMITS.notes) || null,
+        priority:  safePriority(get('priority')),
+        due_date:  get('due_date') || null,
+        completed: get('completed') === 'true',
+        pinned:    get('pinned')    === 'true',
+        tags:      get('tags') ? get('tags').split(';').map(t => t.trim()).filter(Boolean) : [],
+        sort_order: 0,
+      }
+    }).filter(Boolean)
+
+    if (!inserts.length) { setError('No valid rows found in CSV.'); return }
+
+    const { error: err } = await supabase.from('todos').insert(inserts)
+    if (err) { setError('Import failed: ' + err.message); return }
+    // Reload todos
+    const { data } = await supabase.from('todos')
+      .select('id,title,notes,completed,due_date,project_id,category_id,tags,priority,sort_order,pinned,created_at')
+      .order('sort_order').order('created_at')
+    if (data) setTodos(data)
+    e.target.value = ''
   }
 
   // ── Filter & view logic ───────────────────
@@ -850,6 +1115,13 @@ export default function App() {
               <option value="medium">🟡 Medium</option>
               <option value="low">⚪ Low</option>
             </select>
+            <button className="btn-ghost icon-only" title="Export CSV" onClick={exportCSV}>
+              <Download size={14} />
+            </button>
+            <label className="btn-ghost icon-only" title="Import CSV">
+              <Upload size={14} />
+              <input type="file" accept=".csv" onChange={importCSV} style={{ display: 'none' }} />
+            </label>
             <button className="btn-primary" onClick={() => setModal('new')}>
               <Plus size={15} /> New Task
             </button>
@@ -888,7 +1160,7 @@ export default function App() {
 
       {modal && (
         <TodoModal todo={modal === 'new' ? null : modal}
-          projects={projects} categories={categories}
+          projects={projects} categories={categories} userId={userId}
           onSave={saveTodo} onClose={() => setModal(null)} />
       )}
       {mgr === 'projects' && (

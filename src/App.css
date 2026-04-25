@@ -828,6 +828,156 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
 .preset-color:hover { transform: scale(1.15); }
 .preset-color.selected { border-color: white; transform: scale(1.1); }
 
+/* ── Modal Tabs ── */
+.modal-large { max-width: 560px; }
+.modal-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  padding: 0 20px;
+  gap: 2px;
+}
+.modal-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text3);
+  font-family: var(--font);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: -1px;
+}
+.modal-tab:hover { color: var(--text2); }
+.modal-tab.active { color: var(--accent2); border-bottom-color: var(--accent2); }
+.modal-body-tab { padding-top: 12px; }
+
+/* ── Subtasks ── */
+.sub-panel { display: flex; flex-direction: column; gap: 10px; }
+.sub-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-family: var(--mono);
+}
+.sub-progress-label {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text3);
+}
+.sub-progress-bar {
+  height: 4px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.sub-progress-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+.sub-list { display: flex; flex-direction: column; gap: 2px; }
+.sub-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg3);
+  border: 1px solid var(--border);
+}
+.sub-item.completed .sub-title { text-decoration: line-through; color: var(--text3); }
+.sub-check {
+  background: none; border: none; cursor: pointer;
+  display: flex; align-items: center; color: var(--text3);
+  padding: 0; flex-shrink: 0;
+}
+.sub-title { flex: 1; font-size: 13px; color: var(--text); }
+.sub-add {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+.sub-add input {
+  flex: 1; background: transparent; border: none; outline: none;
+  font-family: var(--font); font-size: 13px; color: var(--text);
+}
+.sub-add input::placeholder { color: var(--text3); }
+
+/* ── Comments ── */
+.comment-list { display: flex; flex-direction: column; gap: 8px; max-height: 240px; overflow-y: auto; }
+.comment-empty { font-size: 12px; color: var(--text3); font-style: italic; }
+.comment-item {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.comment-body { font-size: 13px; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
+.comment-footer { display: flex; align-items: center; justify-content: space-between; }
+.comment-time { font-size: 10px; font-family: var(--mono); color: var(--text3); }
+.comment-add { display: flex; flex-direction: column; gap: 8px; }
+.comment-add textarea {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font);
+  font-size: 13px;
+  color: var(--text);
+  padding: 8px 10px;
+  outline: none;
+  resize: none;
+  transition: border-color 0.15s;
+}
+.comment-add textarea:focus { border-color: var(--accent); }
+.comment-add textarea::placeholder { color: var(--text3); }
+.comment-add .btn-primary { align-self: flex-end; }
+
+/* ── Manager desc ── */
+.manager-name-group { flex: 1; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+.manager-desc { font-size: 11px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ── Export/Import ── */
+.btn-ghost.icon-only {
+  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* ── Todo card subtask progress ── */
+.todo-subtask-bar {
+  height: 3px;
+  background: var(--bg3);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+.todo-subtask-fill {
+  height: 100%;
+  background: var(--success);
+  border-radius: 2px;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
