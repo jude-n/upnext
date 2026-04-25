@@ -788,10 +788,16 @@ export default function App() {
       ...(view.startsWith('project-') ? { project_id: safeUUID(view.replace('project-', '')) } : {}),
       ...(view === 'today' ? { due_date: format(new Date(), 'yyyy-MM-dd') } : {}),
     }
-    const { error: err } = await supabase.from('todos').insert(newTodo)
+    // Use select() so we get the created record back
+    const { data, error: err } = await supabase.from('todos').insert(newTodo).select().single()
     if (err) { setError('Failed to add task.'); return }
-    // Realtime INSERT event updates state — no manual push needed (prevents duplicates)
-    setModal(null)
+    // Manually add to state (realtime would duplicate since we're selecting)
+    if (data) setTodos(t => {
+      // Avoid duplicate if realtime fires too
+      if (t.find(x => x.id === data.id)) return t
+      return [...t, data]
+    })
+    return data // return so saveTodo can re-open modal
   }
 
   const updateTodo = async (updated) => {
@@ -822,9 +828,14 @@ export default function App() {
     setTodos(t => t.filter(x => x.id !== id))
   }
 
-  const saveTodo = (form) => {
-    if (modal?.id) updateTodo({ ...modal, ...form })
-    else addTodo(form)
+  const saveTodo = async (form) => {
+    if (modal?.id) {
+      updateTodo({ ...modal, ...form })
+    } else {
+      // After creating, re-open in edit mode so subtasks/comments are available
+      const created = await addTodo(form)
+      if (created) setModal(created)
+    }
   }
 
   const handleDragEnd = async (group, reordered) => {

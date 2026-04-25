@@ -1,43 +1,42 @@
 # UpNext — Task Manager
 
-A clean, synced todo app that runs on Mac and iPhone. Built with React + Supabase. Stay organized across all your devices with real-time synchronization, projects, categories, and priority levels.
-
-## 🎯 Overview
-
-UpNext is a **personal task management application** designed for productivity enthusiasts who want a lightweight, fast, and synced todo list across their devices. It combines the simplicity of a todo app with powerful organizational features like projects, categories, tags, and drag-and-drop reordering.
+A clean, synced todo app that runs on Mac and iPhone. Built with React + Supabase.
 
 ## Features
 
-- ✅ **Multiple Views** — Today / Week / Month / All tasks
-- 📁 **Projects** — Organize tasks into projects
-- 🏷️ **Categories & Tags** — Categorize and tag your tasks
-- 🎯 **Priority Levels** — Set priorities (High / Medium / Low)
-- 🖱️ **Drag & Drop** — Reorder tasks with ease
-- 🔄 **Real-time Sync** — Automatic sync between Mac and iPhone via Supabase
-- 📱 **Progressive Web App** — Install on iPhone home screen via Safari
-- 🌍 **Cloud-based** — All data stored in Supabase, accessible anywhere
+- ✅ **Multiple Views** — Today / Week / Month / All Tasks
+- 📁 **Projects** — Organize tasks into projects with icon, color, and description
+- 🏷️ **Categories & Tags** — Categorize and tag tasks; filter by either from the sidebar
+- 🎯 **Priority Levels** — High / Medium / Low with visual indicators
+- 📌 **Pinned Tasks** — Pin any task to always appear in Today regardless of due date
+- 🖱️ **Drag & Drop** — Reorder tasks within any group
+- ✅ **Subtasks** — Add subtasks to any task with a progress bar
+- 💬 **Comments / Updates** — Log progress notes on any task with timestamps
+- 📤 **Export CSV** — Download all tasks as a CSV file
+- 📥 **Import CSV** — Bulk import tasks from a CSV file
+- 🔄 **Real-time Sync** — Instant sync between Mac and iPhone via Supabase
+- 📱 **PWA** — Installs on iPhone home screen via Safari "Add to Home Screen"
+- 🔐 **Secure** — Email OTP login, Row Level Security on all tables
 
 ---
 
-## Database schema
-
-The following diagram shows the core tables, primary keys (PK), foreign keys (FK), and cardinality. The SQL schema lives in `SUPABASE_SCHEMA.sql`.
+## Database Schema
 
 ```mermaid
 erDiagram
     AUTH_USERS {
-        UUID id PK "supabase auth.users"
+        UUID id PK
     }
-
     PROJECTS {
-        UUID id PK "gen_random_uuid()"
+        UUID id PK
+        UUID user_id FK
         TEXT name
+        TEXT description
         TEXT color
         TEXT icon
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
-
     CATEGORIES {
         UUID id PK
         UUID user_id FK
@@ -45,180 +44,213 @@ erDiagram
         TEXT color
         TIMESTAMPTZ created_at
     }
-
     TODOS {
         UUID id PK
         UUID user_id FK
+        UUID project_id FK
+        UUID category_id FK
         TEXT title
         TEXT notes
         BOOLEAN completed
-        DATE due_date
-        UUID project_id FK
-        UUID category_id FK
-        TEXT[] tags
-        TEXT priority
-        INTEGER sort_order
         BOOLEAN pinned
+        DATE due_date
+        TEXT priority
+        TEXT[] tags
+        INTEGER sort_order
         TIMESTAMPTZ created_at
         TIMESTAMPTZ updated_at
     }
+    SUBTASKS {
+        UUID id PK
+        UUID user_id FK
+        UUID todo_id FK
+        TEXT title
+        BOOLEAN completed
+        INTEGER sort_order
+        TIMESTAMPTZ created_at
+    }
+    COMMENTS {
+        UUID id PK
+        UUID user_id FK
+        UUID todo_id FK
+        TEXT body
+        TIMESTAMPTZ created_at
+    }
 
-    AUTH_USERS ||--o{ PROJECTS : "owns"
-    AUTH_USERS ||--o{ CATEGORIES : "owns"
-    AUTH_USERS ||--o{ TODOS : "owns"
-    PROJECTS ||--o{ TODOS : "has many"
-    CATEGORIES ||--o{ TODOS : "has many"
+    AUTH_USERS ||--o{ PROJECTS   : owns
+    AUTH_USERS ||--o{ CATEGORIES : owns
+    AUTH_USERS ||--o{ TODOS      : owns
+    AUTH_USERS ||--o{ SUBTASKS   : owns
+    AUTH_USERS ||--o{ COMMENTS   : owns
+    PROJECTS   ||--o{ TODOS      : contains
+    CATEGORIES ||--o{ TODOS      : labels
+    TODOS      ||--o{ SUBTASKS   : has
+    TODOS      ||--o{ COMMENTS   : has
 ```
 
-Table summaries (from `SUPABASE_SCHEMA.sql`):
+### SQL to run in Supabase
 
-- Projects
-  - id: UUID PK, default gen_random_uuid()
-  - user_id: UUID NOT NULL → references auth.users(id) ON DELETE CASCADE
-  - name: TEXT NOT NULL (1..100 chars)
-  - color: TEXT NOT NULL default '#6366f1' (hex color check)
-  - icon: TEXT default '📁' (<= 10 chars)
-  - created_at: TIMESTAMPTZ default NOW()
-  - updated_at: TIMESTAMPTZ default NOW()
+All tables and policies are in `SUPABASE_SCHEMA.sql`. Run it once in Supabase SQL Editor. Then run these additional migrations if upgrading from an earlier version:
 
-- Categories
-  - id: UUID PK, default gen_random_uuid()
-  - user_id: UUID NOT NULL → references auth.users(id) ON DELETE CASCADE
-  - name: TEXT NOT NULL (1..50 chars)
-  - color: TEXT NOT NULL default '#6366f1' (hex color check)
-  - created_at: TIMESTAMPTZ default NOW()
+```sql
+-- Pinned column (if not already added)
+ALTER TABLE todos ADD COLUMN IF NOT EXISTS pinned BOOLEAN DEFAULT FALSE;
 
-- Todos
-  - id: UUID PK, default gen_random_uuid()
-  - user_id: UUID NOT NULL → references auth.users(id) ON DELETE CASCADE
-  - title: TEXT NOT NULL (1..500 chars)
-  - notes: TEXT (nullable, <= 5000 chars)
-  - completed: BOOLEAN default FALSE
-  - due_date: DATE (nullable)
-  - project_id: UUID nullable → references projects(id) ON DELETE SET NULL
-  - category_id: UUID nullable → references categories(id) ON DELETE SET NULL
-  - tags: TEXT[] default '{}'
-  - priority: TEXT default 'medium' CHECK IN ('low','medium','high')
-  - sort_order: INTEGER default 0
-  - pinned: BOOLEAN default FALSE (added via ALTER TABLE)
-  - created_at: TIMESTAMPTZ default NOW()
-  - updated_at: TIMESTAMPTZ default NOW()
+-- Project description
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS description TEXT
+  CHECK (description IS NULL OR char_length(description) <= 500);
 
-Other DB-level items included in `SUPABASE_SCHEMA.sql`:
+-- Subtasks table
+CREATE TABLE IF NOT EXISTS subtasks (
+  id         UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id    UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  todo_id    UUID        NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+  title      TEXT        NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
+  completed  BOOLEAN     DEFAULT FALSE,
+  sort_order INTEGER     DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-- Indexes: todos(user_id), todos(due_date), todos(project_id), todos(completed), projects(user_id), categories(user_id)
-- Triggers: `update_updated_at()` and triggers applied to `todos` and `projects` to auto-update `updated_at` on UPDATE
-- Row Level Security (RLS) enabled for `todos`, `projects`, `categories` and owner-only policies using `auth.uid()`
-- Realtime publication lines for `todos`, `projects`, `categories` (Supabase-specific)
+-- Comments table
+CREATE TABLE IF NOT EXISTS comments (
+  id         UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id    UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  todo_id    UUID        NOT NULL REFERENCES todos(id) ON DELETE CASCADE,
+  body       TEXT        NOT NULL CHECK (char_length(body) BETWEEN 1 AND 2000),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-What is missing / recommendations
-- categories.updated_at: there is no `updated_at` column or trigger for `categories`. Add `updated_at TIMESTAMPTZ` and include it in the trigger if you want to track edits.
-- Seeds: `SUPABASE_SCHEMA.sql` creates structure but does not insert seed data. README previously said it seeds default data; it does not.
-- Tags: `tags` is a TEXT[] (simple). If you need tag metadata, counts, or performant tag queries, create a normalized `tags` table and a `todo_tags` join table (many-to-many).
-- Uniqueness constraints: consider making `projects(user_id, name)` and `categories(user_id, name)` unique to avoid duplicate-named projects/categories per user.
-- Indexes: consider indexing `todos(user_id, completed, due_date)` composite indexes for common queries, and a `GIN` index on `tags` if you keep the array type.
-- Soft deletes: if you need to preserve removed rows, add a `deleted_at TIMESTAMPTZ` instead of hard deletes (RLS and policies may need updating).
-- Full-text search: add a tsvector column and index if you want fast searching across titles/notes.
-- Categories icon: categories currently have no `icon` column — if you want icons like projects have, add it.
-
-If you'd like, I can:
-- add `updated_at` to `categories` and apply the `update_updated_at` trigger there
-- propose SQL to normalize `tags` to a `tags` + `todo_tags` join table
-- add suggested indexes and uniqueness constraints
-
-
+-- RLS for new tables
+ALTER TABLE subtasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comments  ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "subtasks: owner" ON subtasks USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "comments: owner" ON comments  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+```
 
 ---
 
 ## Setup (15 minutes)
 
 ### Step 1 — Create a Supabase project
-1. Go to [supabase.com](https://supabase.com) and create a free account
-2. Click **New Project**, give it a name, set a password, choose a region
-3. Wait ~2 minutes for it to provision
+1. Go to [supabase.com](https://supabase.com) → create a free account
+2. Click **New Project**, name it, set a password, choose a region
+3. Wait ~2 minutes to provision
 
 ### Step 2 — Run the schema
-1. In your Supabase dashboard, go to **SQL Editor**
-2. Open the file `SUPABASE_SCHEMA.sql` from this folder
-3. Paste the entire contents into the SQL editor
-4. Click **Run** — this creates the tables (no seed data included)
+1. Go to **SQL Editor** in your Supabase dashboard
+2. Paste and run `SUPABASE_SCHEMA.sql`
+3. Then paste and run the migration SQL above
 
 ### Step 3 — Get your API keys
-1. Go to **Settings → API** in your Supabase dashboard
-2. Copy the **Project URL** (looks like `https://xxx.supabase.co`)
+1. Go to **Settings → API**
+2. Copy the **Project URL** (`https://xxx.supabase.co`)
 3. Copy the **anon / public** key
 
-### Step 4 — Set up environment variables
-Create a `.env` file in the root of this folder:
+### Step 4 — Configure Authentication
+1. Go to **Authentication → URL Configuration**
+2. Set **Site URL** to your production domain (e.g. `https://upnext-you.vercel.app`)
+3. Add the same URL to **Redirect URLs**
+4. Go to **Authentication → Email Templates → Magic Link**
+5. Replace the body with:
+```html
+<p>Your UpNext sign-in code:</p>
+<h2>{{ .Token }}</h2>
+<p>Expires in 10 minutes.</p>
+```
 
+### Step 5 — Environment variables
+Create `.env` in the project root:
 ```
 REACT_APP_SUPABASE_URL=https://your-project.supabase.co
 REACT_APP_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-### Step 5 — Run locally
+### Step 6 — Run locally
 ```bash
 npm install
 npm start
+# Opens at http://localhost:3000
 ```
 
-Opens at http://localhost:3000
+Or with Docker:
+```bash
+cp .env.example .env   # fill in your keys
+docker compose up
+```
 
 ---
 
-## Deploy for free (so it syncs everywhere)
+## Deploy (free)
 
-### Option A — Vercel (Recommended)
-1. Push this folder to a GitHub repo
-2. Go to [vercel.com](https://vercel.com) → New Project → Import your repo
-3. Add your environment variables in the Vercel dashboard
-4. Deploy — you'll get a URL like `https://upnext-yourname.vercel.app`
+### Vercel (Recommended)
+1. Push to a GitHub repo
+2. Go to [vercel.com](https://vercel.com) → New Project → import repo
+3. Add your two env vars in the Vercel dashboard
+4. Deploy → get a URL like `https://upnext-you.vercel.app`
 
-### Option B — Netlify
-1. Push to GitHub
-2. Go to [netlify.com](https://netlify.com) → Add new site → GitHub
-3. Add environment variables in Site Settings → Environment Variables
-4. Deploy
+Every `git push` auto-deploys. Roll back any deploy in one click from the dashboard.
 
 ---
 
-## iPhone Setup (PWA)
-1. Open your deployed URL in **Safari** on your iPhone
-2. Tap the **Share** button (square with arrow)
-3. Tap **Add to Home Screen**
-4. Tap **Add** — it now appears as an app icon!
+## iPhone (PWA)
+1. Open your Vercel URL in **Safari** on iPhone
+2. Tap **Share → Add to Home Screen**
+3. Tap **Add**
 
-It will sync in real-time with your Mac.
+The app installs as a standalone icon, syncs in real-time with your Mac, and stays logged in automatically.
 
----
-
-## Mac App (Optional)
-You can also use the web app in a dedicated window using:
-- **Fluid App** (free) — wraps any website into a Mac app
-- Or just keep it as a pinned tab in Safari/Chrome
+**Sign in flow:** Enter your email → get a code → paste the code in the app. No redirect links, works perfectly inside the PWA.
 
 ---
 
-## Customizing
+## Using the App
 
-### Add a new project
-Currently done via Supabase Table Editor (Projects table). A full UI for this is a great next feature to add.
-
-### Add categories
-Same — via Supabase Table Editor → categories table.
-
-### Environment variables
-| Variable | Description |
+### Views
+| View | Shows |
 |---|---|
-| `REACT_APP_SUPABASE_URL` | Your Supabase project URL |
-| `REACT_APP_SUPABASE_ANON_KEY` | Your Supabase anon/public key |
+| Today | Tasks due today + pinned tasks |
+| This Week | Tasks grouped by day for the next 7 days |
+| This Month | Tasks due this month |
+| All Tasks | Everything grouped by project |
+
+### Pinning tasks
+Click the 📌 pin icon on any task to make it always appear in Today, even without a due date. Useful for recurring reminders or things you want in sight every day.
+
+### Subtasks
+Open any task → click the **Subtasks** tab. Add subtasks with Enter. A progress bar tracks completion. Subtasks are shown on the task card as a thin green bar.
+
+### Comments / Updates
+Open any task → click the **Updates** tab. Log progress notes with timestamps. Good for tracking what you've done on a long-running task.
+
+### Projects
+Click ⚙ next to **Projects** in the sidebar to add/delete projects. Each project has a name, optional description, emoji icon, and color. Tasks in a project show a colored badge.
+
+### Categories
+Click ⚙ next to **Categories** to manage them. Click any category in the sidebar to filter the current view by it.
+
+### Export / Import
+- **↓ Export** — Downloads all your tasks as a CSV
+- **↑ Import** — Upload a CSV with a `title` column (and optionally `notes`, `priority`, `due_date`, `tags`, `completed`, `pinned`)
 
 ---
 
 ## Tech Stack
-- **React 18** — UI
-- **@dnd-kit** — Drag and drop
-- **Supabase** — Database + real-time sync
-- **date-fns** — Date utilities
-- **lucide-react** — Icons
-- **Syne + DM Mono** — Fonts
+| Layer | Tool |
+|---|---|
+| UI | React 18 |
+| Drag & Drop | @dnd-kit |
+| Database & Auth | Supabase (Postgres + RLS) |
+| Real-time | Supabase Realtime |
+| Dates | date-fns |
+| Icons | lucide-react |
+| Fonts | Syne + DM Mono |
+| Hosting | Vercel |
+| Mobile | PWA (no App Store needed) |
+
+---
+
+## Security
+- **Email OTP** — No passwords. Sign in via a code sent to your email
+- **Row Level Security** — Every table enforces `auth.uid() = user_id` at the database level. The anon key is safe to expose in the browser
+- **Input validation** — All fields sanitized and length-limited client-side and via DB constraints
+- **No service key in frontend** — Only the anon key is used; the service role key is never included
