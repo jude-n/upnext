@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core'
@@ -762,30 +762,13 @@ export default function App() {
   }, [session])
 
   // ── Realtime ──────────────────────────────
-  useEffect(() => {
-    if (!session) return
-    const channel = supabase.channel('todos-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, payload => {
-        if (payload.eventType === 'INSERT') {
-          // Skip if addTodo already pushed this record to state
-          if (localInsertIds.current.has(payload.new.id)) {
-            localInsertIds.current.delete(payload.new.id)
-            return
-          }
-          setTodos(t => [...t, payload.new])
-        }
-        if (payload.eventType === 'UPDATE') setTodos(t => t.map(x => x.id === payload.new.id ? payload.new : x))
-        if (payload.eventType === 'DELETE') setTodos(t => t.filter(x => x.id !== payload.old.id))
-      })
-      .subscribe()
-    return () => supabase.removeChannel(channel)
-  }, [session])
+  // All todo state is managed locally via CRUD functions.
+  // No realtime subscription for todos — avoids duplicate race conditions.
+  // For a single-user app this is simpler and more reliable.
+  // If you ever need multi-tab/device live sync, re-enable with dedup logic.
 
   const signOut = async () => { await supabase.auth.signOut(); setSession(null) }
   const userId  = session?.user?.id
-
-  // Track IDs we've already added manually so realtime INSERT skips them
-  const localInsertIds = React.useRef(new Set())
 
   // ── Todo CRUD ─────────────────────────────
   const addTodo = async (titleOrObj) => {
@@ -800,10 +783,7 @@ export default function App() {
     }
     const { data, error: err } = await supabase.from('todos').insert(newTodo).select().single()
     if (err) { setError('Failed to add task.'); return }
-    if (data) {
-      localInsertIds.current.add(data.id) // tell realtime to skip this one
-      setTodos(t => [...t, data])
-    }
+    if (data) setTodos(t => [...t, data])
     return data
   }
 
