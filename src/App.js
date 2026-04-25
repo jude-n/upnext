@@ -766,8 +766,14 @@ export default function App() {
     if (!session) return
     const channel = supabase.channel('todos-changes')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'todos' }, payload => {
-        // INSERT is handled manually in addTodo (we need the returned record for subtasks/comments)
-        // Only handle UPDATE and DELETE via realtime
+        if (payload.eventType === 'INSERT') {
+          // Skip if addTodo already pushed this record to state
+          if (localInsertIds.current.has(payload.new.id)) {
+            localInsertIds.current.delete(payload.new.id)
+            return
+          }
+          setTodos(t => [...t, payload.new])
+        }
         if (payload.eventType === 'UPDATE') setTodos(t => t.map(x => x.id === payload.new.id ? payload.new : x))
         if (payload.eventType === 'DELETE') setTodos(t => t.filter(x => x.id !== payload.old.id))
       })
@@ -777,6 +783,9 @@ export default function App() {
 
   const signOut = async () => { await supabase.auth.signOut(); setSession(null) }
   const userId  = session?.user?.id
+
+  // Track IDs we've already added manually so realtime INSERT skips them
+  const localInsertIds = React.useRef(new Set())
 
   // ── Todo CRUD ─────────────────────────────
   const addTodo = async (titleOrObj) => {
@@ -789,10 +798,12 @@ export default function App() {
       ...(view.startsWith('project-') ? { project_id: safeUUID(view.replace('project-', '')) } : {}),
       ...(view === 'today' ? { due_date: format(new Date(), 'yyyy-MM-dd') } : {}),
     }
-    // Use select() so we get the created record back
     const { data, error: err } = await supabase.from('todos').insert(newTodo).select().single()
     if (err) { setError('Failed to add task.'); return }
-    if (data) setTodos(t => [...t, data])
+    if (data) {
+      localInsertIds.current.add(data.id) // tell realtime to skip this one
+      setTodos(t => [...t, data])
+    }
     return data
   }
 
