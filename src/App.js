@@ -10,7 +10,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { supabase } from './supabase'
 import {
   Plus, Grip, Tag, Calendar, ChevronDown, ChevronRight,
-  X, Edit2, Trash2, Sun, LayoutList, Clock, Circle,
+  X, Edit2, Trash2, Sun, Moon, LayoutList, Clock, Circle,
   CheckCircle2, LogOut, AlertTriangle, Pin, Settings,
   MessageSquare, ListChecks, Download, Upload, Send, Layers, Search,
   Folder, Briefcase, Home, Heart, BookOpen, Target, Lightbulb, Wrench,
@@ -879,6 +879,21 @@ export default function App() {
   const [filter,     setFilter]     = useState({ category: '', priority: '', tag: '' })
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState('')
+  const [theme,      setTheme]      = useState(() => {
+    try {
+      const saved = localStorage.getItem('upnext-theme')
+      if (saved === 'light' || saved === 'dark') return saved
+    } catch { /* ignore */ }
+    return window.matchMedia?.('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
+  })
+
+  // ── Theme ─────────────────────────────────
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    try { localStorage.setItem('upnext-theme', theme) } catch { /* ignore */ }
+  }, [theme])
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
   // ── Auth ──────────────────────────────────
   useEffect(() => {
@@ -1298,6 +1313,10 @@ export default function App() {
         )}
 
         <div className="sidebar-footer">
+          <button className="nav-item" onClick={toggleTheme}>
+            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+            {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+          </button>
           <button className="nav-item" onClick={signOut} style={{ color: 'var(--text3)' }}>
             <LogOut size={13} /> Sign out
           </button>

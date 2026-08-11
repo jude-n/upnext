@@ -1,28 +1,65 @@
-/* ── Focal — Dark Editorial Todo App ── */
-@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap');
+/* ── upnext — modern, friendly todo app (light + dark) ── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap');
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
-  --bg:        #0d0d0d;
-  --bg2:       #141414;
-  --bg3:       #1a1a1a;
-  --border:    #222;
-  --border2:   #2a2a2a;
-  --text:      #e8e8e8;
-  --text2:     #888;
-  --text3:     #555;
-  --accent:    #6366f1;
-  --accent2:   #818cf8;
-  --danger:    #ef4444;
-  --success:   #10b981;
-  --warn:      #f59e0b;
-  --radius:    10px;
-  --radius-sm: 6px;
-  --font:      'Syne', sans-serif;
-  --mono:      'DM Mono', monospace;
-  --sidebar-w: 220px;
-  --shadow:    0 4px 24px rgba(0,0,0,0.4);
+  /* Dark theme (default) — soft charcoal, not pure black */
+  --bg:            #16161b;
+  --bg2:           #1c1c22;
+  --bg3:           #24242c;
+  --border:        #2a2a33;
+  --border2:       #35353f;
+  --text:          #eef0f4;
+  --text2:         #9a9aa8;
+  --text3:         #6c6c78;
+  --accent:        #6366f1;
+  --accent2:       #818cf8;
+  --accent-soft:   rgba(129,140,248,0.16);
+  --accent-soft2:  rgba(129,140,248,0.1);
+  --danger:        #f87171;
+  --danger-soft:   rgba(248,113,113,0.12);
+  --danger-soft2:  rgba(248,113,113,0.24);
+  --success:       #34d399;
+  --warn:          #fbbf24;
+  --warn-soft:     rgba(251,191,36,0.12);
+  --warn-soft2:    rgba(251,191,36,0.24);
+  --radius:        14px;
+  --radius-sm:     9px;
+  --font:          'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mono:          'DM Mono', monospace;
+  --sidebar-w:     224px;
+  --shadow:        0 12px 32px rgba(0,0,0,0.35);
+  --card-shadow:   none;
+  --overlay:       rgba(10,10,14,0.65);
+  --scheme:        dark;
+}
+
+:root[data-theme="light"] {
+  /* Light theme — warm off-white paper, Bear/Asana-inspired */
+  --bg:            #faf9f6;
+  --bg2:           #ffffff;
+  --bg3:           #f2f0eb;
+  --border:        #e7e4dd;
+  --border2:       #dad6cd;
+  --text:          #23222a;
+  --text2:         #6c6a76;
+  --text3:         #9d9aa4;
+  --accent:        #6366f1;
+  --accent2:       #4f46e5;
+  --accent-soft:   rgba(99,102,241,0.1);
+  --accent-soft2:  rgba(99,102,241,0.07);
+  --danger:        #dc2626;
+  --danger-soft:   rgba(220,38,38,0.08);
+  --danger-soft2:  rgba(220,38,38,0.18);
+  --success:       #059669;
+  --warn:          #d97706;
+  --warn-soft:     rgba(217,119,6,0.1);
+  --warn-soft2:    rgba(217,119,6,0.2);
+  --shadow:        0 12px 32px rgba(35,30,20,0.12);
+  --card-shadow:   0 1px 2px rgba(35,30,20,0.04), 0 1px 1px rgba(35,30,20,0.03);
+  --overlay:       rgba(35,30,25,0.35);
+  --scheme:        light;
 }
 
 html, body, #root { height: 100%; }
@@ -33,6 +70,8 @@ body {
   color: var(--text);
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  color-scheme: var(--scheme);
+  transition: background 0.2s ease, color 0.2s ease;
 }
 
 /* ── Layout ── */
@@ -61,7 +100,7 @@ body {
   letter-spacing: -1px;
   color: var(--text);
   padding: 0 8px;
-  background: linear-gradient(135deg, #fff 30%, var(--accent2));
+  background: linear-gradient(135deg, var(--text) 30%, var(--accent2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -97,7 +136,7 @@ body {
   width: 100%;
 }
 .nav-item:hover { background: var(--bg3); color: var(--text); }
-.nav-item.active { background: rgba(99,102,241,0.15); color: var(--accent2); }
+.nav-item.active { background: var(--accent-soft); color: var(--accent2); }
 .nav-item.tag-nav { font-size: 12px; color: var(--text3); }
 
 .nav-count {
@@ -109,7 +148,7 @@ body {
   padding: 1px 6px;
   border-radius: 10px;
 }
-.nav-item.active .nav-count { color: var(--accent2); background: rgba(99,102,241,0.1); }
+.nav-item.active .nav-count { color: var(--accent2); background: var(--accent-soft2); }
 
 /* ── Main ── */
 .main {
@@ -244,11 +283,12 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 9px 10px;
+  padding: 10px 12px;
   border-radius: var(--radius-sm);
   background: var(--bg2);
   border: 1px solid var(--border);
-  transition: all 0.15s;
+  box-shadow: var(--card-shadow);
+  transition: border-color 0.15s, background 0.15s, box-shadow 0.15s, transform 0.1s;
   position: relative;
   group: true;
 }
@@ -345,8 +385,8 @@ body {
   color: var(--text3);
   border: 1px solid var(--border);
 }
-.due-badge.urgent { background: rgba(245,158,11,0.1); color: var(--warn); border-color: rgba(245,158,11,0.2); }
-.due-badge.overdue { background: rgba(239,68,68,0.1); color: var(--danger); border-color: rgba(239,68,68,0.2); }
+.due-badge.urgent { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-soft2); }
+.due-badge.overdue { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-soft2); }
 
 .todo-actions {
   display: flex;
@@ -369,7 +409,7 @@ body {
   transition: all 0.15s;
 }
 .icon-btn:hover { color: var(--text); background: var(--bg3); }
-.icon-btn.danger:hover { color: var(--danger); background: rgba(239,68,68,0.1); }
+.icon-btn.danger:hover { color: var(--danger); background: var(--danger-soft); }
 
 .btn-primary {
   display: inline-flex;
@@ -384,11 +424,13 @@ body {
   font-weight: 600;
   padding: 8px 14px;
   cursor: pointer;
-  transition: all 0.15s;
+  box-shadow: 0 1px 2px rgba(99,102,241,0.25);
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
   white-space: nowrap;
 }
-.btn-primary:hover { background: var(--accent2); }
-.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary:hover { background: var(--accent2); box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
+.btn-primary:active { transform: translateY(1px); }
+.btn-primary:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
 .btn-primary.small { padding: 5px 10px; font-size: 12px; }
 .btn-primary.full { width: 100%; justify-content: center; padding: 12px; font-size: 15px; }
 
@@ -409,7 +451,7 @@ body {
 .modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.7);
+  background: var(--overlay);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
@@ -517,6 +559,7 @@ body {
 
 /* date input color fix */
 input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opacity: 0.4; }
+:root[data-theme="light"] input[type="date"]::-webkit-calendar-picker-indicator { filter: none; opacity: 0.55; }
 
 .modal-footer {
   display: flex;
@@ -562,7 +605,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   font-size: 36px;
   font-weight: 800;
   letter-spacing: -2px;
-  background: linear-gradient(135deg, #fff 30%, var(--accent2));
+  background: linear-gradient(135deg, var(--text) 30%, var(--accent2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -654,7 +697,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   font-size: 30px;
   font-weight: 800;
   letter-spacing: -1px;
-  background: linear-gradient(135deg, #fff 30%, var(--accent2));
+  background: linear-gradient(135deg, var(--text) 30%, var(--accent2));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -681,17 +724,17 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   align-items: center;
   gap: 8px;
   padding: 10px 24px;
-  background: rgba(239,68,68,0.1);
-  border-bottom: 1px solid rgba(239,68,68,0.2);
-  color: #ef4444;
+  background: var(--danger-soft);
+  border-bottom: 1px solid var(--danger-soft2);
+  color: var(--danger);
   font-size: 13px;
 }
 .error-banner span { flex: 1; }
 
 .form-error {
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.2);
-  color: #ef4444;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-soft2);
+  color: var(--danger);
   font-size: 12px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
@@ -713,10 +756,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
 }
 
 /* ── Pin ── */
-.pin-indicator { color: #818cf8; flex-shrink: 0; }
-.todo-item.is-pinned { border-left: 2px solid #818cf8; }
-.pin-active { color: #818cf8 !important; }
-.icon-btn.pin-active { color: #818cf8; }
+.pin-indicator { color: var(--accent2); flex-shrink: 0; }
+.todo-item.is-pinned { border-left: 2px solid var(--accent2); }
+.pin-active { color: var(--accent2) !important; }
+.icon-btn.pin-active { color: var(--accent2); }
 
 .pin-toggle {
   display: flex;
@@ -728,7 +771,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   padding: 6px 0;
 }
 .pin-toggle input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
-.pin-toggle svg { color: #818cf8; flex-shrink: 0; }
+.pin-toggle svg { color: var(--accent2); flex-shrink: 0; }
 
 /* ── Sidebar nav actions ── */
 .nav-section-with-action {
@@ -830,7 +873,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   transition: border-color 0.15s;
 }
 .preset-icon:hover { border-color: var(--accent); }
-.preset-icon.selected { border-color: var(--accent); background: rgba(99,102,241,0.15); }
+.preset-icon.selected { border-color: var(--accent); background: var(--accent-soft); }
 
 .preset-color {
   width: 24px;
@@ -1118,7 +1161,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0,0,0,0.6);
+    background: var(--overlay);
     z-index: 60;
     animation: fade-in 0.2s ease;
   }
@@ -1170,7 +1213,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
     text-align: left;
     transition: background 0.15s, color 0.15s;
   }
-  .drawer-item.active { background: rgba(99,102,241,0.15); color: var(--accent2); }
+  .drawer-item.active { background: var(--accent-soft); color: var(--accent2); }
   .drawer-item:active { background: var(--bg3); }
   .drawer-item-count {
     margin-left: auto;
