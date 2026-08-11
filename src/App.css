@@ -749,6 +749,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   transition: color 0.15s, background 0.15s;
 }
 .nav-action-btn:hover { color: var(--text); background: var(--bg3); }
+.nav-action-group { display: flex; align-items: center; gap: 2px; }
 
 .nav-empty {
   color: var(--text3) !important;
@@ -793,6 +794,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
   background: var(--border);
   margin: 4px 0;
 }
+.manager-area-select {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-family: var(--font);
+  font-size: 11px;
+  padding: 3px 6px;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  max-width: 100px;
+}
+.manager-area-select:focus { border-color: var(--accent); color: var(--text); }
 
 /* ── Preset grids ── */
 .preset-grid {
@@ -827,6 +842,52 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
 }
 .preset-color:hover { transform: scale(1.15); }
 .preset-color.selected { border-color: white; transform: scale(1.1); }
+
+.color-picker-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.color-wheel-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text3);
+  cursor: pointer;
+}
+.color-wheel-input {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+.color-wheel-input::-webkit-color-swatch-wrapper { padding: 2px; }
+.color-wheel-input::-webkit-color-swatch { border: none; border-radius: 3px; }
+
+.icon-search-wrap { position: relative; margin-top: 4px; }
+.icon-search-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text3);
+  pointer-events: none;
+}
+.icon-search {
+  width: 100%;
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px 6px 26px;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 12px;
+}
+.icon-search:focus { border-color: var(--accent); }
+.icon-search::placeholder { color: var(--text3); }
+.icon-grid { max-height: 150px; overflow-y: auto; margin-top: 6px; }
+.icon-grid .preset-icon { color: var(--text2); }
+.icon-grid .preset-icon.selected { color: var(--accent2); }
 
 /* ── Modal Tabs ── */
 .modal-large { max-width: 560px; }

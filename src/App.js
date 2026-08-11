@@ -12,7 +12,13 @@ import {
   Plus, Grip, Tag, Calendar, ChevronDown, ChevronRight,
   X, Edit2, Trash2, Sun, LayoutList, Clock, Circle,
   CheckCircle2, LogOut, AlertTriangle, Pin, Settings,
-  MessageSquare, ListChecks, Download, Upload, Send
+  MessageSquare, ListChecks, Download, Upload, Send, Layers, Search,
+  Folder, Briefcase, Home, Heart, BookOpen, Target, Lightbulb, Wrench,
+  Sprout, Code2, Server, Database, Cloud, ShieldCheck, Plane, Wallet,
+  GraduationCap, Dumbbell, Music, Camera, Palette, Gamepad2, Coffee,
+  Car, Bike, Utensils, Gift, PawPrint, TreePine, Star, Flag, FileText,
+  Rocket, Users, Building2, Phone, Mail, Globe, Film, Book, Brush,
+  Hammer, Landmark, ShoppingCart, PiggyBank, HeartPulse, Baby, Scissors, Puzzle,
 } from 'lucide-react'
 import { format, isToday, isTomorrow, isThisWeek, isThisMonth, parseISO, isPast, addDays } from 'date-fns'
 import './App.css'
@@ -26,6 +32,7 @@ const LIMITS = {
   projName:    100,
   projDesc:    500,
   catName:     50,
+  areaName:    50,
   comment:     2000,
   subtitle:    200,
 }
@@ -63,18 +70,85 @@ const PRIORITY_CONFIG = {
 }
 
 const PRESET_COLORS = ['#6366f1','#f59e0b','#10b981','#ef4444','#3b82f6','#ec4899','#8b5cf6','#14b8a6']
-const PRESET_ICONS  = ['📁','🚀','💼','🏠','❤️','📚','🎯','💡','🛠️','🌱']
+
+// Outline icon set (matches the rest of the app's Lucide-based visual language).
+// Stored as the icon's name; ProjectIcon falls back to rendering the raw
+// string for any legacy emoji values saved before this set existed.
+const ICON_MAP = {
+  Folder, Briefcase, Home, Heart, BookOpen, Target, Lightbulb, Wrench,
+  Sprout, Code2, Server, Database, Cloud, ShieldCheck, Plane, Wallet,
+  GraduationCap, Dumbbell, Music, Camera, Palette, Gamepad2, Coffee,
+  Car, Bike, Utensils, Gift, PawPrint, TreePine, Star, Flag, FileText,
+  Rocket, Users, Building2, Phone, Mail, Globe, Film, Book, Brush,
+  Hammer, Landmark, ShoppingCart, PiggyBank, HeartPulse, Baby, Scissors, Puzzle,
+}
+const ICON_NAMES  = Object.keys(ICON_MAP)
+const DEFAULT_ICON = 'Folder'
 
 const dueDateLabel = (dateStr) => {
   if (!dateStr) return null
   try {
     const d = parseISO(dateStr)
-    if (isToday(d))    return { label: 'Today',            urgent: true }
-    if (isTomorrow(d)) return { label: 'Tomorrow',         urgent: false }
-    if (isPast(d))     return { label: format(d, 'MMM d'), urgent: true, overdue: true }
-    if (isThisWeek(d)) return { label: format(d, 'EEE'),   urgent: false }
+    if (isToday(d))    return { label: 'Today',                        urgent: true }
+    if (isTomorrow(d)) return { label: 'Tomorrow',                     urgent: false }
+    if (isPast(d))     return { label: `Overdue · ${format(d, 'MMM d')}`, urgent: true, overdue: true }
+    if (isThisWeek(d)) return { label: format(d, 'EEE'),               urgent: false }
     return { label: format(d, 'MMM d'), urgent: false }
   } catch { return null }
+}
+
+// ─── Project Icon (renders a Lucide icon by name, or raw text for legacy emoji) ─
+function ProjectIcon({ name, size = 16, color }) {
+  const Cmp = ICON_MAP[name]
+  if (Cmp) return <Cmp size={size} color={color} strokeWidth={2} />
+  return <span style={{ color, fontSize: size, lineHeight: 1 }}>{name || '📁'}</span>
+}
+
+// ─── Color Picker (presets + native color wheel) ────────────────────────────
+function ColorPicker({ color, onChange }) {
+  return (
+    <div className="color-picker-row">
+      <div className="preset-grid">
+        {PRESET_COLORS.map(c => (
+          <button key={c} type="button" className={`preset-color ${color === c ? 'selected' : ''}`}
+            style={{ background: c }} onClick={() => onChange(c)} />
+        ))}
+      </div>
+      <label className="color-wheel-label">
+        <input type="color" className="color-wheel-input" value={safeColor(color)}
+          onChange={e => onChange(e.target.value)} />
+        Custom
+      </label>
+    </div>
+  )
+}
+
+// ─── Icon Picker (searchable Lucide icon grid) ──────────────────────────────
+function IconPicker({ value, onChange }) {
+  const [q, setQ] = useState('')
+  const filtered = q ? ICON_NAMES.filter(n => n.toLowerCase().includes(q.toLowerCase())) : ICON_NAMES
+  return (
+    <div>
+      <div className="icon-search-wrap">
+        <Search size={13} className="icon-search-icon" />
+        <input className="icon-search" placeholder="Search icons…" value={q}
+          onChange={e => setQ(e.target.value)} />
+      </div>
+      <div className="preset-grid icon-grid">
+        {filtered.map(name => {
+          const Icon = ICON_MAP[name]
+          return (
+            <button key={name} type="button" title={name}
+              className={`preset-icon ${value === name ? 'selected' : ''}`}
+              onClick={() => onChange(name)}>
+              <Icon size={16} />
+            </button>
+          )
+        })}
+        {filtered.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 12 }}>No icons match "{q}".</p>}
+      </div>
+    </div>
+  )
 }
 
 // ─── Error Banner ─────────────────────────────────────────────────────────────
@@ -170,19 +244,23 @@ function LoginScreen() {
 }
 
 // ─── Project Manager Modal ────────────────────────────────────────────────────
-function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
-  const [name,  setName]  = useState('')
-  const [desc,  setDesc]  = useState('')
-  const [color, setColor] = useState(PRESET_COLORS[0])
-  const [icon,  setIcon]  = useState(PRESET_ICONS[0])
-  const [error, setError] = useState('')
+function ProjectManager({ projects, areas, userId, onClose, onAdd, onDelete, onUpdateArea }) {
+  const [name,   setName]   = useState('')
+  const [desc,   setDesc]   = useState('')
+  const [color,  setColor]  = useState(PRESET_COLORS[0])
+  const [icon,   setIcon]   = useState(DEFAULT_ICON)
+  const [areaId, setAreaId] = useState('')
+  const [error,  setError]  = useState('')
 
   const handleAdd = async () => {
     const clean = sanitizeText(name)
     if (!clean) { setError('Name is required.'); return }
     if (clean.length > LIMITS.projName) { setError('Name too long.'); return }
     setError('')
-    await onAdd({ name: clean, description: sanitizeText(desc) || null, color: safeColor(color), icon, user_id: userId })
+    await onAdd({
+      name: clean, description: sanitizeText(desc) || null, color: safeColor(color), icon,
+      area_id: safeUUID(areaId) || null, user_id: userId,
+    })
     setName(''); setDesc('')
   }
 
@@ -199,11 +277,18 @@ function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
             {projects.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>No projects yet.</p>}
             {projects.map(p => (
               <div key={p.id} className="manager-row">
-                <span style={{ color: p.color, fontSize: 16 }}>{p.icon}</span>
+                <ProjectIcon name={p.icon} color={p.color} />
                 <div className="manager-name-group">
                   <span className="manager-name">{p.name}</span>
                   {p.description && <span className="manager-desc">{p.description}</span>}
                 </div>
+                {areas.length > 0 && (
+                  <select className="manager-area-select" value={p.area_id || ''}
+                    onChange={e => onUpdateArea(p.id, e.target.value)}>
+                    <option value="">No area</option>
+                    {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                  </select>
+                )}
                 <button className="icon-btn danger" onClick={() => onDelete(p.id)}><Trash2 size={13} /></button>
               </div>
             ))}
@@ -211,7 +296,7 @@ function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
           <div className="manager-divider" />
           <div className="modal-field">
             <label>New Project Name</label>
-            <input placeholder="e.g. Work, Personal…" value={name}
+            <input placeholder="e.g. Coding Bootcamp, Home Renovation…" value={name}
               onChange={e => setName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
               maxLength={LIMITS.projName} />
@@ -222,23 +307,22 @@ function ProjectManager({ projects, userId, onClose, onAdd, onDelete }) {
               onChange={e => setDesc(e.target.value)}
               maxLength={LIMITS.projDesc} />
           </div>
+          {areas.length > 0 && (
+            <div className="modal-field">
+              <label>Area</label>
+              <select value={areaId} onChange={e => setAreaId(e.target.value)}>
+                <option value="">No area</option>
+                {areas.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+          )}
           <div className="modal-field">
             <label>Icon</label>
-            <div className="preset-grid">
-              {PRESET_ICONS.map(ic => (
-                <button key={ic} className={`preset-icon ${icon === ic ? 'selected' : ''}`}
-                  onClick={() => setIcon(ic)}>{ic}</button>
-              ))}
-            </div>
+            <IconPicker value={icon} onChange={setIcon} />
           </div>
           <div className="modal-field">
             <label>Color</label>
-            <div className="preset-grid">
-              {PRESET_COLORS.map(c => (
-                <button key={c} className={`preset-color ${color === c ? 'selected' : ''}`}
-                  style={{ background: c }} onClick={() => setColor(c)} />
-              ))}
-            </div>
+            <ColorPicker color={color} onChange={setColor} />
           </div>
         </div>
         <div className="modal-footer">
@@ -294,17 +378,72 @@ function CategoryManager({ categories, userId, onClose, onAdd, onDelete }) {
           </div>
           <div className="modal-field">
             <label>Color</label>
-            <div className="preset-grid">
-              {PRESET_COLORS.map(c => (
-                <button key={c} className={`preset-color ${color === c ? 'selected' : ''}`}
-                  style={{ background: c }} onClick={() => setColor(c)} />
-              ))}
-            </div>
+            <ColorPicker color={color} onChange={setColor} />
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Done</button>
           <button className="btn-primary" onClick={handleAdd}><Plus size={14} /> Add Category</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Area Manager Modal ───────────────────────────────────────────────────────
+function AreaManager({ areas, userId, onClose, onAdd, onDelete }) {
+  const [name,  setName]  = useState('')
+  const [color, setColor] = useState(PRESET_COLORS[0])
+  const [error, setError] = useState('')
+
+  const handleAdd = async () => {
+    const clean = sanitizeText(name)
+    if (!clean) { setError('Name is required.'); return }
+    if (clean.length > LIMITS.areaName) { setError('Name too long.'); return }
+    setError('')
+    await onAdd({ name: clean, color: safeColor(color), user_id: userId })
+    setName('')
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <span>Manage Areas</span>
+          <button className="icon-btn" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="modal-body">
+          {error && <div className="form-error">{error}</div>}
+          <p style={{ color: 'var(--text3)', fontSize: 12, margin: '0 0 10px' }}>
+            Areas are life domains projects belong to — tasks inherit their area from their project.
+            Keep this short; two or three (e.g. Work, Personal) usually covers it.
+          </p>
+          <div className="manager-list">
+            {areas.length === 0 && <p style={{ color: 'var(--text3)', fontSize: 13 }}>No areas yet. Try "Work" and "Personal".</p>}
+            {areas.map(a => (
+              <div key={a.id} className="manager-row">
+                <span className="manager-color-dot" style={{ background: a.color }} />
+                <span className="manager-name">{a.name}</span>
+                <button className="icon-btn danger" onClick={() => onDelete(a.id)}><Trash2 size={13} /></button>
+              </div>
+            ))}
+          </div>
+          <div className="manager-divider" />
+          <div className="modal-field">
+            <label>New Area Name</label>
+            <input placeholder="e.g. Work, Personal…" value={name}
+              onChange={e => setName(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleAdd()}
+              maxLength={LIMITS.areaName} />
+          </div>
+          <div className="modal-field">
+            <label>Color</label>
+            <ColorPicker color={color} onChange={setColor} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn-ghost" onClick={onClose}>Done</button>
+          <button className="btn-primary" onClick={handleAdd}><Plus size={14} /> Add Area</button>
         </div>
       </div>
     </div>
@@ -348,7 +487,7 @@ function TodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, onPi
         <div className="todo-meta">
           {project && (
             <span className="todo-badge project-badge" style={{ '--badge-color': project.color }}>
-              <span className="badge-icon">{project.icon}</span> {project.name}
+              <span className="badge-icon"><ProjectIcon name={project.icon} size={10} /></span> {project.name}
             </span>
           )}
           {category && (
@@ -607,7 +746,7 @@ function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
                   <label>Project</label>
                   <select value={form.project_id} onChange={e => set('project_id', e.target.value)}>
                     <option value="">No Project</option>
-                    {projects.map(p => <option key={p.id} value={p.id}>{p.icon} {p.name}</option>)}
+                    {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
                 </div>
                 <div className="modal-field">
@@ -651,13 +790,24 @@ function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
 }
 
 // ─── Group Section ────────────────────────────────────────────────────────────
-function TodoGroup({ title, todos, projects, categories, onToggle, onDelete, onEdit, onPin, onDragEnd, accent }) {
-  const [collapsed, setCollapsed] = useState(false)
+function TodoGroup({ id, title, todos, projects, categories, onToggle, onDelete, onEdit, onPin, onDragEnd, accent }) {
+  const storageKey = `upnext-collapsed-${id || title}`
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return localStorage.getItem(storageKey) === '1' } catch { return false }
+  })
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
   if (todos.length === 0) return null
+
+  const toggleCollapsed = () => {
+    setCollapsed(c => {
+      const next = !c
+      try { localStorage.setItem(storageKey, next ? '1' : '0') } catch { /* ignore */ }
+      return next
+    })
+  }
 
   const handleDragEnd = (event) => {
     const { active, over } = event
@@ -670,7 +820,7 @@ function TodoGroup({ title, todos, projects, categories, onToggle, onDelete, onE
 
   return (
     <div className="todo-group">
-      <div className="group-header" onClick={() => setCollapsed(c => !c)} style={{ '--accent': accent || '#6366f1' }}>
+      <div className="group-header" onClick={toggleCollapsed} style={{ '--accent': accent || '#6366f1' }}>
         <div className="group-header-left">
           {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           <span className="group-title">{title}</span>
@@ -721,9 +871,10 @@ export default function App() {
   const [todos,      setTodos]      = useState([])
   const [projects,   setProjects]   = useState([])
   const [categories, setCategories] = useState([])
+  const [areas,      setAreas]      = useState([])
   const [view,       setView]       = useState('today')
   const [modal,      setModal]      = useState(null)
-  const [mgr,        setMgr]        = useState(null)  // 'projects' | 'categories' | null
+  const [mgr,        setMgr]        = useState(null)  // 'projects' | 'categories' | 'areas' | null
   const [drawer,     setDrawer]     = useState(false) // mobile menu drawer
   const [filter,     setFilter]     = useState({ category: '', priority: '', tag: '' })
   const [loading,    setLoading]    = useState(true)
@@ -736,7 +887,7 @@ export default function App() {
     })
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN')  { setSession(session); setAuthReady(true) }
-      if (event === 'SIGNED_OUT') { setSession(null); setTodos([]); setProjects([]); setCategories([]) }
+      if (event === 'SIGNED_OUT') { setSession(null); setTodos([]); setProjects([]); setCategories([]); setAreas([]) }
     })
     return () => subscription.unsubscribe()
   }, [])
@@ -748,14 +899,16 @@ export default function App() {
     Promise.all([
       supabase.from('todos').select('id,title,notes,completed,due_date,project_id,category_id,tags,priority,sort_order,pinned,created_at')
         .order('sort_order').order('created_at'),
-      supabase.from('projects').select('id,name,color,icon').order('created_at'),
+      supabase.from('projects').select('id,name,color,icon,area_id').order('created_at'),
       supabase.from('categories').select('id,name,color').order('name'),
-    ]).then(([t, p, c]) => {
+      supabase.from('areas').select('id,name,color').order('created_at'),
+    ]).then(([t, p, c, a]) => {
       if (t.error) { setError('Failed to load tasks: ' + t.error.message) }
       else {
         setTodos(t.data || [])
         setProjects(p.data || [])
         setCategories(c.data || [])
+        setAreas(a.data || [])
       }
       setLoading(false)  // always runs now, never gets stuck
     })
@@ -861,6 +1014,28 @@ export default function App() {
     setCategories(c => c.filter(x => x.id !== id))
   }
 
+  // ── Area CRUD ──────────────────────────────
+  const addArea = async (area) => {
+    const { data, error: err } = await supabase.from('areas').insert(area).select().single()
+    if (err) { setError('Failed to add area. Have you run the areas migration in Supabase yet?'); return }
+    if (data) setAreas(a => [...a, data])
+  }
+
+  const deleteArea = async (id) => {
+    if (!safeUUID(id)) return
+    const { error: err } = await supabase.from('areas').delete().eq('id', id)
+    if (err) { setError('Failed to delete area.'); return }
+    setAreas(a => a.filter(x => x.id !== id))
+    setProjects(p => p.map(x => x.area_id === id ? { ...x, area_id: null } : x))
+  }
+
+  const updateProjectArea = async (projectId, areaId) => {
+    const { data, error: err } = await supabase.from('projects')
+      .update({ area_id: areaId || null }).eq('id', projectId).select().single()
+    if (err) { setError('Failed to update project.'); return }
+    if (data) setProjects(p => p.map(x => x.id === data.id ? data : x))
+  }
+
   // ── Export CSV ────────────────────────────
   const exportCSV = () => {
     const headers = ['title','notes','priority','due_date','completed','pinned','tags','project','category']
@@ -956,11 +1131,39 @@ export default function App() {
 
     if (view === 'today') {
       const today = format(new Date(), 'yyyy-MM-dd')
-      return {
-        type: 'flat',
-        active: active.filter(t => t.due_date === today || t.pinned),
-        done:   done.filter(t => t.due_date === today || t.pinned),
+      const relevant  = t => t.due_date === today || t.pinned
+      const activeToday = active.filter(relevant)
+      const doneToday   = done.filter(relevant)
+
+      // Sort overdue-but-pinned tasks to the front of their section so old
+      // pinned items don't hide among things that are actually due today.
+      const rank = (t) => {
+        const info = dueDateLabel(t.due_date)
+        if (info?.overdue) return 0
+        if (t.due_date === today) return 1
+        return 2
       }
+      const bySchedule = (list) => [...list].sort((a, b) => rank(a) - rank(b))
+
+      if (areas.length === 0) {
+        return { type: 'flat', active: bySchedule(activeToday), done: doneToday }
+      }
+
+      const byArea = {}
+      areas.forEach(a => { byArea[a.id] = { label: a.name, todos: [], accent: a.color } })
+      byArea.unsorted = { label: 'Unsorted', todos: [], accent: '#6b7280' }
+
+      activeToday.forEach(t => {
+        const proj   = projects.find(p => p.id === t.project_id)
+        const areaId = proj?.area_id
+        const key    = areaId && byArea[areaId] ? areaId : 'unsorted'
+        byArea[key].todos.push(t)
+      })
+
+      const groups = [...areas.map(a => byArea[a.id]), byArea.unsorted]
+        .map(g => ({ ...g, todos: bySchedule(g.todos) }))
+
+      return { type: 'grouped', groups, done: doneToday }
     }
     if (view === 'week') {
       const groups = {}
@@ -995,7 +1198,7 @@ export default function App() {
       return { type: 'flat', active: active.filter(t => t.project_id === pid), done: done.filter(t => t.project_id === pid) }
     }
     const byProject = {}
-    projects.forEach(p => { byProject[p.id] = { label: `${p.icon} ${p.name}`, todos: [], accent: p.color } })
+    projects.forEach(p => { byProject[p.id] = { label: p.name, todos: [], accent: p.color } })
     byProject['none'] = { label: 'Inbox', todos: [], accent: '#6366f1' }
     active.forEach(t => { const k = t.project_id && byProject[t.project_id] ? t.project_id : 'none'; byProject[k].todos.push(t) })
     return { type: 'grouped', groups: [byProject['none'], ...projects.map(p => byProject[p.id])], done }
@@ -1045,7 +1248,10 @@ export default function App() {
         <nav className="sidebar-nav">
           <div className="nav-section-label nav-section-with-action">
             <span>Projects</span>
-            <button className="nav-action-btn" onClick={() => setMgr('projects')}><Settings size={11} /></button>
+            <div className="nav-action-group">
+              <button className="nav-action-btn" title="Manage Areas" onClick={() => setMgr('areas')}><Layers size={11} /></button>
+              <button className="nav-action-btn" title="Manage Projects" onClick={() => setMgr('projects')}><Settings size={11} /></button>
+            </div>
           </div>
           {projects.length === 0 && (
             <button className="nav-item nav-empty" onClick={() => setMgr('projects')}>
@@ -1055,7 +1261,7 @@ export default function App() {
           {projects.map(p => (
             <button key={p.id} className={`nav-item ${view === `project-${p.id}` ? 'active' : ''}`}
               onClick={() => setView(`project-${p.id}`)}>
-              <span style={{ color: p.color }}>{p.icon}</span> {p.name}
+              <ProjectIcon name={p.icon} color={p.color} size={14} /> {p.name}
               <span className="nav-count">{todos.filter(t => !t.completed && t.project_id === p.id).length || ''}</span>
             </button>
           ))}
@@ -1131,21 +1337,28 @@ export default function App() {
         <div className="main-content">
           {viewData.type === 'flat' ? (
             <>
-              <TodoGroup title="Tasks" todos={viewData.active} projects={projects} categories={categories}
+              <TodoGroup id={`${view}-tasks`} title="Tasks" todos={viewData.active} projects={projects} categories={categories}
                 onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
                 onDragEnd={handleDragEnd} accent="#6366f1" />
               {(viewData.done?.length > 0) && (
-                <TodoGroup title="Completed" todos={viewData.done} projects={projects} categories={categories}
+                <TodoGroup id={`${view}-completed`} title="Completed" todos={viewData.done} projects={projects} categories={categories}
                   onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
                   onDragEnd={handleDragEnd} accent="#6b7280" />
               )}
             </>
           ) : (
-            viewData.groups.map((g, i) => (
-              <TodoGroup key={i} title={g.label} todos={g.todos} projects={projects} categories={categories}
-                onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
-                onDragEnd={handleDragEnd} accent={g.accent} />
-            ))
+            <>
+              {viewData.groups.map((g, i) => (
+                <TodoGroup key={i} id={`${view}-${g.label}`} title={g.label} todos={g.todos} projects={projects} categories={categories}
+                  onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
+                  onDragEnd={handleDragEnd} accent={g.accent} />
+              ))}
+              {(viewData.done?.length > 0) && (
+                <TodoGroup id={`${view}-completed`} title="Completed" todos={viewData.done} projects={projects} categories={categories}
+                  onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
+                  onDragEnd={handleDragEnd} accent="#6b7280" />
+              )}
+            </>
           )}
           {filteredTodos.filter(t => !t.completed).length === 0 && (
             <div className="empty-state">
@@ -1162,12 +1375,16 @@ export default function App() {
           onSave={saveTodo} onClose={() => setModal(null)} />
       )}
       {mgr === 'projects' && (
-        <ProjectManager projects={projects} userId={userId}
-          onClose={() => setMgr(null)} onAdd={addProject} onDelete={deleteProject} />
+        <ProjectManager projects={projects} areas={areas} userId={userId}
+          onClose={() => setMgr(null)} onAdd={addProject} onDelete={deleteProject} onUpdateArea={updateProjectArea} />
       )}
       {mgr === 'categories' && (
         <CategoryManager categories={categories} userId={userId}
           onClose={() => setMgr(null)} onAdd={addCategory} onDelete={deleteCategory} />
+      )}
+      {mgr === 'areas' && (
+        <AreaManager areas={areas} userId={userId}
+          onClose={() => setMgr(null)} onAdd={addArea} onDelete={deleteArea} />
       )}
 
       {/* ── Mobile Tab Bar ── */}
@@ -1200,9 +1417,14 @@ export default function App() {
             <div className="drawer-section">
               <div className="drawer-section-label">
                 <span>Projects</span>
-                <button className="nav-action-btn" onClick={() => { setMgr('projects'); setDrawer(false) }}>
-                  <Settings size={11} />
-                </button>
+                <div className="nav-action-group">
+                  <button className="nav-action-btn" onClick={() => { setMgr('areas'); setDrawer(false) }}>
+                    <Layers size={11} />
+                  </button>
+                  <button className="nav-action-btn" onClick={() => { setMgr('projects'); setDrawer(false) }}>
+                    <Settings size={11} />
+                  </button>
+                </div>
               </div>
               {projects.length === 0 && (
                 <button className="drawer-item" onClick={() => { setMgr('projects'); setDrawer(false) }}>
@@ -1213,7 +1435,7 @@ export default function App() {
                 <button key={p.id}
                   className={`drawer-item ${view === `project-${p.id}` ? 'active' : ''}`}
                   onClick={() => { setView(`project-${p.id}`); setDrawer(false) }}>
-                  <span style={{ color: p.color }}>{p.icon}</span> {p.name}
+                  <ProjectIcon name={p.icon} color={p.color} size={14} /> {p.name}
                   <span className="drawer-item-count">{todos.filter(t => !t.completed && t.project_id === p.id).length || ''}</span>
                 </button>
               ))}

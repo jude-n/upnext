@@ -5,6 +5,7 @@ A clean, synced todo app that runs on Mac and iPhone. Built with React + Supabas
 ## Features
 
 - ✅ **Multiple Views** — Today / Week / Month / All Tasks
+- 🗂️ **Areas** — Group projects into life domains (e.g. Work / Personal); Today splits into sections by area
 - 📁 **Projects** — Organize tasks into projects with icon, color, and description
 - 🏷️ **Categories & Tags** — Categorize and tag tasks; filter by either from the sidebar
 - 🎯 **Priority Levels** — High / Medium / Low with visual indicators
@@ -27,9 +28,17 @@ erDiagram
     AUTH_USERS {
         UUID id PK
     }
+    AREAS {
+        UUID id PK
+        UUID user_id FK
+        TEXT name
+        TEXT color
+        TIMESTAMPTZ created_at
+    }
     PROJECTS {
         UUID id PK
         UUID user_id FK
+        UUID area_id FK
         TEXT name
         TEXT description
         TEXT color
@@ -77,11 +86,13 @@ erDiagram
         TIMESTAMPTZ created_at
     }
 
+    AUTH_USERS ||--o{ AREAS      : owns
     AUTH_USERS ||--o{ PROJECTS   : owns
     AUTH_USERS ||--o{ CATEGORIES : owns
     AUTH_USERS ||--o{ TODOS      : owns
     AUTH_USERS ||--o{ SUBTASKS   : owns
     AUTH_USERS ||--o{ COMMENTS   : owns
+    AREAS      ||--o{ PROJECTS   : groups
     PROJECTS   ||--o{ TODOS      : contains
     CATEGORIES ||--o{ TODOS      : labels
     TODOS      ||--o{ SUBTASKS   : has
@@ -125,6 +136,21 @@ ALTER TABLE subtasks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE comments  ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "subtasks: owner" ON subtasks USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "comments: owner" ON comments  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+-- Areas (Work / Personal / etc.) — projects belong to an area, tasks inherit it
+CREATE TABLE IF NOT EXISTS areas (
+  id         UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id    UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name       TEXT        NOT NULL CHECK (char_length(name) BETWEEN 1 AND 50),
+  color      TEXT        NOT NULL DEFAULT '#6366f1' CHECK (color ~ '^#[0-9a-fA-F]{6}$'),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS area_id UUID REFERENCES areas(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS areas_user_id_idx    ON areas(user_id);
+CREATE INDEX IF NOT EXISTS projects_area_id_idx ON projects(area_id);
+ALTER TABLE areas ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "areas: owner" ON areas USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+ALTER PUBLICATION supabase_realtime ADD TABLE areas;
 ```
 
 ---

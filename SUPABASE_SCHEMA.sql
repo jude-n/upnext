@@ -23,6 +23,18 @@ CREATE TABLE categories (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- ── Areas ─────────────────────────────────
+-- A small, stable set of life domains (e.g. "Work", "Personal") that
+-- projects belong to. Tasks inherit their area from their project.
+CREATE TABLE areas (
+  id         UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id    UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name       TEXT        NOT NULL CHECK (char_length(name) BETWEEN 1 AND 50),
+  color      TEXT        NOT NULL DEFAULT '#6366f1' CHECK (color ~ '^#[0-9a-fA-F]{6}$'),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS area_id UUID REFERENCES areas(id) ON DELETE SET NULL;
+
 -- ── Todos ─────────────────────────────────
 CREATE TABLE todos (
   id          UUID        DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -48,6 +60,8 @@ CREATE INDEX todos_project_id_idx   ON todos(project_id);
 CREATE INDEX todos_completed_idx    ON todos(completed);
 CREATE INDEX projects_user_id_idx   ON projects(user_id);
 CREATE INDEX categories_user_id_idx ON categories(user_id);
+CREATE INDEX areas_user_id_idx      ON areas(user_id);
+CREATE INDEX projects_area_id_idx   ON projects(area_id);
 
 -- ── Auto-update updated_at ─────────────────
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -68,6 +82,7 @@ CREATE TRIGGER projects_updated_at
 ALTER TABLE todos      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE projects   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE areas      ENABLE ROW LEVEL SECURITY;
 
 -- Todos: full CRUD for owner only
 CREATE POLICY "todos: owner select" ON todos FOR SELECT USING (auth.uid() = user_id);
@@ -87,8 +102,15 @@ CREATE POLICY "categories: owner insert" ON categories FOR INSERT WITH CHECK (au
 CREATE POLICY "categories: owner update" ON categories FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "categories: owner delete" ON categories FOR DELETE USING (auth.uid() = user_id);
 
+-- Areas: full CRUD for owner only
+CREATE POLICY "areas: owner select" ON areas FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "areas: owner insert" ON areas FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "areas: owner update" ON areas FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "areas: owner delete" ON areas FOR DELETE USING (auth.uid() = user_id);
+
 -- ── Realtime ──────────────────────────────
 -- RLS applies to realtime too — you only receive your own rows
 ALTER PUBLICATION supabase_realtime ADD TABLE todos;
 ALTER PUBLICATION supabase_realtime ADD TABLE projects;
 ALTER PUBLICATION supabase_realtime ADD TABLE categories;
+ALTER PUBLICATION supabase_realtime ADD TABLE areas;
