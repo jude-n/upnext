@@ -30,7 +30,7 @@
   --mono:          'DM Mono', monospace;
   --sidebar-w:     224px;
   --shadow:        0 12px 32px rgba(0,0,0,0.35);
-  --card-shadow:   none;
+  --card-shadow:   0 1px 3px rgba(0,0,0,0.25);
   --overlay:       rgba(10,10,14,0.65);
   --scheme:        dark;
 }
@@ -276,7 +276,7 @@ body {
 }
 
 /* ── Todo List ── */
-.todo-list { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 8px; }
+.todo-list { display: flex; flex-direction: column; gap: 7px; padding: 2px 0 8px; }
 
 /* ── Todo Item ── */
 .todo-item {
@@ -757,7 +757,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(1); opaci
 
 /* ── Pin ── */
 .pin-indicator { color: var(--accent2); flex-shrink: 0; }
-.todo-item.is-pinned { border-left: 2px solid var(--accent2); }
+.todo-item.is-pinned { border-left: 2px solid color-mix(in srgb, var(--accent2) 45%, var(--border)); }
 .pin-active { color: var(--accent2) !important; }
 .icon-btn.pin-active { color: var(--accent2); }
 

@@ -479,7 +479,9 @@ function TodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, onPi
       </button>
       <div className="todo-body" onClick={() => onEdit(todo)}>
         <div className="todo-title-row">
-          <span className="todo-prio-dot" style={{ color: prio.color }}>{prio.icon}</span>
+          {todo.priority !== 'medium' && (
+            <span className="todo-prio-dot" style={{ color: prio.color }}>{prio.icon}</span>
+          )}
           <span className="todo-title">{todo.title}</span>
           {todo.pinned && <Pin size={10} className="pin-indicator" />}
           {todo.notes && <span className="todo-has-notes" title={todo.notes}>…</span>}
