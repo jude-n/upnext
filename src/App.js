@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core'
@@ -19,6 +19,7 @@ import {
   Car, Bike, Utensils, Gift, PawPrint, TreePine, Star, Flag, FileText,
   Rocket, Users, Building2, Phone, Mail, Globe, Film, Book, Brush,
   Hammer, Landmark, ShoppingCart, PiggyBank, HeartPulse, Baby, Scissors, Puzzle,
+  Undo2,
 } from 'lucide-react'
 import { format, isToday, isTomorrow, isThisWeek, isThisMonth, parseISO, isPast, addDays } from 'date-fns'
 import './App.css'
@@ -451,25 +452,36 @@ function AreaManager({ areas, userId, onClose, onAdd, onDelete }) {
 }
 
 // ─── Sortable Todo Item ────────────────────────────────────────────────────────
-function SortableTodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, onPin }) {
+function SortableTodoItem({ todo, projects, categories, onToggle, onDelete, onUndoDelete, onEdit, onPin }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: todo.id })
+    useSortable({ id: todo.id, disabled: todo._deleting })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.4 : 1 }
   return (
     <div ref={setNodeRef} style={style}>
       <TodoItem todo={todo} projects={projects} categories={categories}
-        onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onPin={onPin}
+        onToggle={onToggle} onDelete={onDelete} onUndoDelete={onUndoDelete} onEdit={onEdit} onPin={onPin}
         dragHandleProps={{ ...attributes, ...listeners }} />
     </div>
   )
 }
 
 // ─── Todo Item ────────────────────────────────────────────────────────────────
-function TodoItem({ todo, projects, categories, onToggle, onDelete, onEdit, onPin, dragHandleProps }) {
+function TodoItem({ todo, projects, categories, onToggle, onDelete, onUndoDelete, onEdit, onPin, dragHandleProps }) {
   const project  = projects.find(p => p.id === todo.project_id)
   const category = categories.find(c => c.id === todo.category_id)
   const dueInfo  = dueDateLabel(todo.due_date)
   const prio     = PRIORITY_CONFIG[todo.priority] || PRIORITY_CONFIG.medium
+
+  if (todo._deleting) {
+    return (
+      <div className="todo-item todo-item-deleting">
+        <span className="todo-deleted-label">Task deleted</span>
+        <button className="btn-ghost small" onClick={() => onUndoDelete(todo.id)}>
+          <Undo2 size={13} /> Undo
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className={`todo-item ${todo.completed ? 'completed' : ''} ${todo.pinned ? 'is-pinned' : ''} priority-${todo.priority}`}>
@@ -821,7 +833,7 @@ function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
 }
 
 // ─── Group Section ────────────────────────────────────────────────────────────
-function TodoGroup({ id, title, todos, projects, categories, onToggle, onDelete, onEdit, onPin, onDragEnd, accent }) {
+function TodoGroup({ id, title, todos, projects, categories, onToggle, onDelete, onUndoDelete, onEdit, onPin, onDragEnd, accent }) {
   const storageKey = `upnext-collapsed-${id || title}`
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem(storageKey) === '1' } catch { return false }
@@ -855,7 +867,7 @@ function TodoGroup({ id, title, todos, projects, categories, onToggle, onDelete,
         <div className="group-header-left">
           {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
           <span className="group-title">{title}</span>
-          <span className="group-count">{todos.filter(t => !t.completed).length}</span>
+          <span className="group-count">{todos.filter(t => !t.completed && !t._deleting).length}</span>
         </div>
       </div>
       {!collapsed && (
@@ -865,7 +877,7 @@ function TodoGroup({ id, title, todos, projects, categories, onToggle, onDelete,
               {todos.map(todo => (
                 <SortableTodoItem key={todo.id} todo={todo}
                   projects={projects} categories={categories}
-                  onToggle={onToggle} onDelete={onDelete} onEdit={onEdit} onPin={onPin} />
+                  onToggle={onToggle} onDelete={onDelete} onUndoDelete={onUndoDelete} onEdit={onEdit} onPin={onPin} />
               ))}
             </div>
           </SortableContext>
@@ -1007,12 +1019,36 @@ export default function App() {
     setTodos(t => t.map(x => x.id === todo.id ? { ...x, pinned: !x.pinned } : x))
   }
 
-  const deleteTodo = async (id) => {
+  // Deleting a task shows an "undo" state for a few seconds before it's
+  // actually removed from the database, so an accidental click is recoverable.
+  const deleteTimers = useRef({})
+  const DELETE_UNDO_MS = 5000
+
+  const deleteTodo = (id) => {
     if (!safeUUID(id)) return
-    const { error: err } = await supabase.from('todos').delete().eq('id', id)
-    if (err) { setError('Failed to delete task.'); return }
-    setTodos(t => t.filter(x => x.id !== id))
+    setTodos(t => t.map(x => x.id === id ? { ...x, _deleting: true } : x))
+    deleteTimers.current[id] = setTimeout(async () => {
+      delete deleteTimers.current[id]
+      const { error: err } = await supabase.from('todos').delete().eq('id', id)
+      if (err) {
+        setError('Failed to delete task.')
+        setTodos(t => t.map(x => x.id === id ? { ...x, _deleting: false } : x))
+        return
+      }
+      setTodos(t => t.filter(x => x.id !== id))
+    }, DELETE_UNDO_MS)
   }
+
+  const undoDeleteTodo = (id) => {
+    const timer = deleteTimers.current[id]
+    if (timer) { clearTimeout(timer); delete deleteTimers.current[id] }
+    setTodos(t => t.map(x => x.id === id ? { ...x, _deleting: false } : x))
+  }
+
+  // Clear any pending delete timers on unmount so they don't fire after teardown.
+  useEffect(() => () => {
+    Object.values(deleteTimers.current).forEach(clearTimeout)
+  }, [])
 
   const saveTodo = async (form) => {
     if (modal?.id) {
@@ -1269,7 +1305,7 @@ export default function App() {
   const allTags     = [...new Set(todos.flatMap(t => t.tags || []))]
   const projectView = view.startsWith('project-') ? projects.find(p => view.includes(p.id)) : null
   const viewTitle   = { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Tasks' }[view] || projectView?.name || 'Tasks'
-  const todayCount  = todos.filter(t => !t.completed && (t.due_date === format(new Date(), 'yyyy-MM-dd') || t.pinned)).length
+  const todayCount  = todos.filter(t => !t.completed && !t._deleting && (t.due_date === format(new Date(), 'yyyy-MM-dd') || t.pinned)).length
 
   return (
     <div className="app">
@@ -1282,7 +1318,7 @@ export default function App() {
             { id: 'today', icon: <Sun size={15} />,          label: 'Today',     count: todayCount },
             { id: 'week',  icon: <Calendar size={15} />,     label: 'This Week' },
             { id: 'month', icon: <LayoutList size={15} />,   label: 'This Month' },
-            { id: 'all',   icon: <CheckCircle2 size={15} />, label: 'All Tasks', count: todos.filter(t => !t.completed).length },
+            { id: 'all',   icon: <CheckCircle2 size={15} />, label: 'All Tasks', count: todos.filter(t => !t.completed && !t._deleting).length },
           ].map(v => (
             <button key={v.id} className={`nav-item ${view === v.id ? 'active' : ''}`} onClick={() => setView(v.id)}>
               {v.icon} {v.label}
@@ -1308,7 +1344,7 @@ export default function App() {
             <button key={p.id} className={`nav-item ${view === `project-${p.id}` ? 'active' : ''}`}
               onClick={() => setView(`project-${p.id}`)}>
               <ProjectIcon name={p.icon} color={p.color} size={14} /> {p.name}
-              <span className="nav-count">{todos.filter(t => !t.completed && t.project_id === p.id).length || ''}</span>
+              <span className="nav-count">{todos.filter(t => !t.completed && !t._deleting && t.project_id === p.id).length || ''}</span>
             </button>
           ))}
         </nav>
@@ -1376,7 +1412,7 @@ export default function App() {
               <Upload size={14} />
               <input type="file" accept=".csv" onChange={importCSV} style={{ display: 'none' }} />
             </label>
-            <button className="btn-primary" onClick={() => setModal('new')}>
+            <button className="btn-primary" onClick={() => setModal({ project_id: projectView?.id || '' })}>
               <Plus size={15} /> New Task
             </button>
           </div>
@@ -1388,11 +1424,11 @@ export default function App() {
           {viewData.type === 'flat' ? (
             <>
               <TodoGroup id={`${view}-tasks`} title="Tasks" todos={viewData.active} projects={projects} categories={categories}
-                onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
+                onToggle={toggleTodo} onDelete={deleteTodo} onUndoDelete={undoDeleteTodo} onEdit={setModal} onPin={pinTodo}
                 onDragEnd={handleDragEnd} accent="#6366f1" />
               {(viewData.done?.length > 0) && (
                 <TodoGroup id={`${view}-completed`} title="Completed" todos={viewData.done} projects={projects} categories={categories}
-                  onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
+                  onToggle={toggleTodo} onDelete={deleteTodo} onUndoDelete={undoDeleteTodo} onEdit={setModal} onPin={pinTodo}
                   onDragEnd={handleDragEnd} accent="#6b7280" />
               )}
             </>
@@ -1400,12 +1436,12 @@ export default function App() {
             <>
               {viewData.groups.map((g, i) => (
                 <TodoGroup key={i} id={`${view}-${g.label}`} title={g.label} todos={g.todos} projects={projects} categories={categories}
-                  onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
+                  onToggle={toggleTodo} onDelete={deleteTodo} onUndoDelete={undoDeleteTodo} onEdit={setModal} onPin={pinTodo}
                   onDragEnd={handleDragEnd} accent={g.accent} />
               ))}
               {(viewData.done?.length > 0) && (
                 <TodoGroup id={`${view}-completed`} title="Completed" todos={viewData.done} projects={projects} categories={categories}
-                  onToggle={toggleTodo} onDelete={deleteTodo} onEdit={setModal} onPin={pinTodo}
+                  onToggle={toggleTodo} onDelete={deleteTodo} onUndoDelete={undoDeleteTodo} onEdit={setModal} onPin={pinTodo}
                   onDragEnd={handleDragEnd} accent="#6b7280" />
               )}
             </>
@@ -1420,7 +1456,7 @@ export default function App() {
       </main>
 
       {modal && (
-        <TodoModal todo={modal === 'new' ? null : modal}
+        <TodoModal todo={modal}
           projects={projects} categories={categories} userId={userId}
           onSave={saveTodo} onClose={() => setModal(null)} />
       )}
@@ -1442,7 +1478,7 @@ export default function App() {
         {[
           { id: 'today', icon: <Sun size={20} />,          label: 'Today',   count: todayCount },
           { id: 'week',  icon: <Calendar size={20} />,     label: 'Week' },
-          { id: 'all',   icon: <CheckCircle2 size={20} />, label: 'All',     count: todos.filter(t => !t.completed).length },
+          { id: 'all',   icon: <CheckCircle2 size={20} />, label: 'All',     count: todos.filter(t => !t.completed && !t._deleting).length },
         ].map(v => (
           <button key={v.id} className={`tab-btn ${view === v.id ? 'active' : ''}`}
             onClick={() => { setView(v.id); setDrawer(false) }}>
@@ -1486,7 +1522,7 @@ export default function App() {
                   className={`drawer-item ${view === `project-${p.id}` ? 'active' : ''}`}
                   onClick={() => { setView(`project-${p.id}`); setDrawer(false) }}>
                   <ProjectIcon name={p.icon} color={p.color} size={14} /> {p.name}
-                  <span className="drawer-item-count">{todos.filter(t => !t.completed && t.project_id === p.id).length || ''}</span>
+                  <span className="drawer-item-count">{todos.filter(t => !t.completed && !t._deleting && t.project_id === p.id).length || ''}</span>
                 </button>
               ))}
             </div>
