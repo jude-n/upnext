@@ -948,6 +948,7 @@ export default function App() {
   const [mgr,        setMgr]        = useState(null)  // 'projects' | 'categories' | 'areas' | null
   const [drawer,     setDrawer]     = useState(false) // mobile menu drawer
   const [filter,     setFilter]     = useState({ category: '', priority: '', tag: '' })
+  const [search,     setSearch]     = useState('')
   const [loading,    setLoading]    = useState(true)
   const [error,      setError]      = useState('')
   const [theme,      setTheme]      = useState(() => {
@@ -1255,10 +1256,15 @@ export default function App() {
   }
 
   // ── Filter & view logic ───────────────────
+  const searchQuery = search.trim().toLowerCase()
   const filteredTodos = todos.filter(t => {
     if (filter.category && t.category_id !== filter.category) return false
     if (filter.priority && t.priority !== filter.priority)     return false
     if (filter.tag && !(t.tags || []).includes(filter.tag))    return false
+    if (searchQuery) {
+      const haystack = [t.title, t.notes, ...(t.tags || [])].filter(Boolean).join(' ').toLowerCase()
+      if (!haystack.includes(searchQuery)) return false
+    }
     return true
   })
 
@@ -1319,15 +1325,17 @@ export default function App() {
         const k = t.due_date && groups[t.due_date] ? t.due_date : 'no-date'
         groups[k].todos.push(t)
       })
-      return { type: 'grouped', groups: order.map(k => groups[k]) }
+      return { type: 'grouped', groups: order.map(k => groups[k]), done }
     }
     if (view === 'month') {
       return {
-        type: 'grouped', groups: [
+        type: 'grouped',
+        groups: [
           { label: 'This Month',  todos: active.filter(t => t.due_date && isThisMonth(parseISO(t.due_date))), accent: '#6366f1' },
           { label: 'Pinned',      todos: active.filter(t => t.pinned && !t.due_date), accent: '#818cf8' },
           { label: 'No Due Date', todos: active.filter(t => !t.due_date && !t.pinned), accent: '#6b7280' },
-        ]
+        ],
+        done,
       }
     }
     if (view.startsWith('project-')) {
@@ -1356,10 +1364,17 @@ export default function App() {
     </div>
   )
 
-  const viewData    = getViewTodos()
+  const searching   = searchQuery.length > 0
+  // While searching, show matches from everywhere flat, ignoring the
+  // current view's date/project grouping — search should look everywhere.
+  const viewData    = searching
+    ? { type: 'flat', active: filteredTodos.filter(t => !t.completed), done: filteredTodos.filter(t => t.completed) }
+    : getViewTodos()
   const allTags     = [...new Set(todos.flatMap(t => t.tags || []))]
   const projectView = view.startsWith('project-') ? projects.find(p => view.includes(p.id)) : null
-  const viewTitle   = { today: 'Today', week: 'This Week', month: 'This Month', all: 'All Tasks' }[view] || projectView?.name || 'Tasks'
+  const viewTitle   = searching
+    ? `Search: "${search.trim()}"`
+    : ({ today: 'Today', week: 'This Week', month: 'This Month', all: 'All Tasks' }[view] || projectView?.name || 'Tasks')
   const todayCount  = todos.filter(t => !t.completed && !t._deleting && (t.due_date === format(new Date(), 'yyyy-MM-dd') || t.pinned)).length
 
   return (
@@ -1453,6 +1468,16 @@ export default function App() {
             {view === 'today' && <span className="view-date">{format(new Date(), 'EEEE, MMMM d')}</span>}
           </div>
           <div className="main-header-right">
+            <div className="search-box">
+              <Search size={13} className="search-box-icon" />
+              <input className="search-box-input" placeholder="Search tasks…" value={search}
+                onChange={e => setSearch(e.target.value)} />
+              {search && (
+                <button className="search-box-clear" title="Clear search" onClick={() => setSearch('')}>
+                  <X size={12} />
+                </button>
+              )}
+            </div>
             <select className="filter-select" value={filter.priority}
               onChange={e => setFilter(f => ({ ...f, priority: e.target.value }))}>
               <option value="">All Priorities</option>
@@ -1501,10 +1526,10 @@ export default function App() {
               )}
             </>
           )}
-          {filteredTodos.filter(t => !t.completed).length === 0 && (
+          {filteredTodos.length === 0 && (
             <div className="empty-state">
               <CheckCircle2 size={40} />
-              <p>All clear! Add a task to get started.</p>
+              <p>{searching ? `No tasks match "${search.trim()}".` : 'All clear! Add a task to get started.'}</p>
             </div>
           )}
         </div>
