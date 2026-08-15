@@ -45,6 +45,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const sanitizeText = (str) =>
   typeof str === 'string' ? str.replace(/<[^>]*>/g, '').trim() : ''
 
+// Tracks which task modal (if any) is currently open with in-progress edits,
+// so a killed/reloaded tab can figure out which draft to reopen on return.
+const OPEN_MODAL_KEY = 'upnext-open-modal'
+
 const sanitizeTags = (tags) =>
   (Array.isArray(tags) ? tags : [])
     .map(t => sanitizeText(t).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, LIMITS.tag))
@@ -694,19 +698,43 @@ function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const isExisting = !!todo?.id
 
+  const saveDraft = (data) => {
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(data))
+      localStorage.setItem(OPEN_MODAL_KEY, JSON.stringify({ id: todo?.id || null }))
+    } catch { /* ignore */ }
+  }
+
   // ── Draft autosave ────────────────────────
   // Persists in-progress edits to localStorage so they survive the modal
   // being unmounted unexpectedly (app switch, swipe-away, tab close, etc.)
   // before the user taps Save.
   useEffect(() => {
-    const t = setTimeout(() => {
-      try { localStorage.setItem(draftKey, JSON.stringify(form)) } catch { /* ignore */ }
-    }, 300)
+    const t = setTimeout(() => saveDraft(form), 300)
     return () => clearTimeout(t)
   }, [form, draftKey])
 
+  // Mobile browsers can suspend or fully kill+reload a backgrounded tab —
+  // that's exactly what happens on an app-switch swipe. The debounce above
+  // can miss the very last keystrokes if that happens mid-typing, so also
+  // flush synchronously the moment the page is hidden or torn down.
+  const formRef = useRef(form)
+  useEffect(() => { formRef.current = form }, [form])
+  useEffect(() => {
+    const flush = () => saveDraft(formRef.current)
+    document.addEventListener('visibilitychange', flush)
+    window.addEventListener('pagehide', flush)
+    return () => {
+      document.removeEventListener('visibilitychange', flush)
+      window.removeEventListener('pagehide', flush)
+    }
+  }, [draftKey])
+
   const clearDraft = () => {
-    try { localStorage.removeItem(draftKey) } catch { /* ignore */ }
+    try {
+      localStorage.removeItem(draftKey)
+      localStorage.removeItem(OPEN_MODAL_KEY)
+    } catch { /* ignore */ }
   }
 
   const handleSave = () => {
@@ -951,6 +979,7 @@ export default function App() {
   }, [])
 
   // ── Load data ─────────────────────────────
+  const restoredDraft = useRef(false)
   useEffect(() => {
     if (!session) return
     setLoading(true)
@@ -963,10 +992,36 @@ export default function App() {
     ]).then(([t, p, c, a]) => {
       if (t.error) { setError('Failed to load tasks: ' + t.error.message) }
       else {
-        setTodos(t.data || [])
+        const loadedTodos = t.data || []
+        setTodos(loadedTodos)
         setProjects(p.data || [])
         setCategories(c.data || [])
         setAreas(a.data || [])
+
+        // If a task modal had unsaved edits when the tab got backgrounded and
+        // the browser later reloaded the page from scratch, `modal` state is
+        // gone even though the draft itself survived in localStorage. Reopen
+        // that modal automatically so the draft is actually restored to view.
+        if (!restoredDraft.current) {
+          restoredDraft.current = true
+          try {
+            const openInfo = JSON.parse(localStorage.getItem(OPEN_MODAL_KEY) || 'null')
+            if (openInfo) {
+              const draftKey = `upnext-draft-${openInfo.id || 'new'}`
+              const draft = JSON.parse(localStorage.getItem(draftKey) || 'null')
+              const hasContent = draft && (sanitizeText(draft.title || '') || sanitizeText(draft.notes || ''))
+              if (hasContent) {
+                if (openInfo.id) {
+                  const match = loadedTodos.find(x => x.id === openInfo.id)
+                  if (match) setModal(match)
+                  else { localStorage.removeItem(draftKey); localStorage.removeItem(OPEN_MODAL_KEY) }
+                } else {
+                  setModal({})
+                }
+              }
+            }
+          } catch { /* ignore */ }
+        }
       }
       setLoading(false)  // always runs now, never gets stuck
     })
