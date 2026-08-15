@@ -659,25 +659,49 @@ function CommentsPanel({ todoId, userId }) {
 
 
 function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
+  const draftKey = `upnext-draft-${todo?.id || 'new'}`
   const [tab,  setTab]  = useState('details')
-  const [form, setForm] = useState({
-    title:       todo?.title       || '',
-    notes:       todo?.notes       || '',
-    due_date:    todo?.due_date    || '',
-    project_id:  todo?.project_id  || '',
-    category_id: todo?.category_id || '',
-    priority:    todo?.priority    || 'medium',
-    tags:        (todo?.tags || []).join(', '),
-    pinned:      todo?.pinned      || false,
+  const [form, setForm] = useState(() => {
+    const base = {
+      title:       todo?.title       || '',
+      notes:       todo?.notes       || '',
+      due_date:    todo?.due_date    || '',
+      project_id:  todo?.project_id  || '',
+      category_id: todo?.category_id || '',
+      priority:    todo?.priority    || 'medium',
+      tags:        (todo?.tags || []).join(', '),
+      pinned:      todo?.pinned      || false,
+    }
+    try {
+      const saved = localStorage.getItem(draftKey)
+      if (saved) return { ...base, ...JSON.parse(saved) }
+    } catch { /* ignore */ }
+    return base
   })
   const [errors, setErrors] = useState([])
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const isExisting = !!todo?.id
 
+  // ── Draft autosave ────────────────────────
+  // Persists in-progress edits to localStorage so they survive the modal
+  // being unmounted unexpectedly (app switch, swipe-away, tab close, etc.)
+  // before the user taps Save.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try { localStorage.setItem(draftKey, JSON.stringify(form)) } catch { /* ignore */ }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [form, draftKey])
+
+  const clearDraft = () => {
+    try { localStorage.removeItem(draftKey) } catch { /* ignore */ }
+  }
+
   const handleSave = () => {
     const { errors: errs, title, notes } = validateTodoForm(form)
     if (errs.length) { setErrors(errs); return }
     const rawTags = form.tags.split(',').map(t => t.trim()).filter(Boolean)
+    clearDraft()
     onSave({
       title, notes: notes || null,
       due_date:    form.due_date    || null,
@@ -689,12 +713,17 @@ function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
     })
   }
 
+  const handleClose = () => {
+    clearDraft()
+    onClose()
+  }
+
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && handleClose()}>
       <div className={`modal ${isExisting ? 'modal-large' : ''}`}>
         <div className="modal-header">
           <span>{isExisting ? 'Edit Task' : 'New Task'}</span>
-          <button className="icon-btn" onClick={onClose}><X size={16} /></button>
+          <button className="icon-btn" onClick={handleClose}><X size={16} /></button>
         </div>
 
         {isExisting && (
@@ -767,7 +796,7 @@ function TodoModal({ todo, projects, categories, onSave, onClose, userId }) {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn-ghost" onClick={handleClose}>Cancel</button>
               <button className="btn-primary" onClick={handleSave}>
                 {isExisting ? 'Save Changes' : 'Add Task'}
               </button>
